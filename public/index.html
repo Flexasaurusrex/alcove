@@ -1083,7 +1083,7 @@ footer {
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
   </button>
   <div class="lightbox-content">
-    <img class="lightbox-img" id="lightboxImg" src="" alt="" onerror="handleImgError(this)" />
+    <img class="lightbox-img" id="lightboxImg" src="" alt="" />
     <video class="lightbox-img" id="lightboxVideo" src="" autoplay loop muted playsinline style="display:none;max-height:85vh;max-width:90vw"></video>
     <div class="lightbox-info">
       <div class="lightbox-title" id="lightboxTitle"></div>
@@ -2400,9 +2400,7 @@ function openLightbox(item) {
     lbVideo.style.display = 'none';
     lbVideo.src = '';
     lbImg.style.display = 'block';
-    lbImg.dataset.full = item.imageUrl || '';
-    lbImg.removeAttribute('data-tried');
-    lbImg.src = item.thumbUrl || item.imageUrl || '';
+    lbImg.src = item.imageUrl || item.thumbUrl || '';
   }
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
   document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
