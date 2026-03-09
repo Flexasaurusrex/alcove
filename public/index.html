@@ -133,11 +133,11 @@ a { color: inherit; text-decoration: none; }
   background-size: cover;
   background-position: center;
   opacity: 0;
-  transition: opacity 2s ease-in-out;
-  filter: brightness(.7) saturate(.6);
-  animation: kenBurns 12s ease-in-out infinite alternate;
+  transition: opacity 2.5s ease-in-out;
+  filter: brightness(.45) saturate(.5) contrast(1.1);
+  animation: kenBurns 14s ease-in-out infinite alternate;
 }
-.hero-bg-img.active { opacity: 1; }
+.hero-bg-img.active { opacity: .85; }
 @keyframes kenBurns {
   from { transform: scale(1); }
   to { transform: scale(1.08); }
@@ -146,13 +146,13 @@ a { color: inherit; text-decoration: none; }
   content: '';
   position: absolute; inset: 0;
   background:
-    radial-gradient(ellipse at center, transparent 30%, rgba(10,10,10,.6) 100%),
+    radial-gradient(ellipse at center, rgba(10,10,10,.15) 0%, rgba(10,10,10,.7) 100%),
     linear-gradient(
       to bottom,
-      rgba(10,10,10,.4) 0%,
-      rgba(10,10,10,.5) 40%,
-      rgba(10,10,10,.7) 80%,
-      rgba(10,10,10,.9) 100%
+      rgba(10,10,10,.5) 0%,
+      rgba(10,10,10,.45) 30%,
+      rgba(10,10,10,.65) 70%,
+      rgba(10,10,10,.92) 100%
     );
   z-index: 1;
 }
@@ -1196,26 +1196,16 @@ footer {
 
 <script>
 // ═══════════════════════════════════════
-// HERO BACKGROUND — LIVE ART FROM OBJKT
+// HERO BACKGROUND — DIVERSE ART SLIDESHOW
 // ═══════════════════════════════════════
-// Curated pks of iconic Tezos artworks from top artists
-const HERO_CURATED_PKS = [
-  73675170, // zancan — "Kumono Shingou #0" (Tree_Line)
-  73675036, // zancan — "A Long Thread" (Tree_Line)
-  73674984, // zancan — "A Bugged Forest" (Tree_Line)
-  73674930, // zancan — "(kinder)Garden, Monuments" (Tree_Line)
+// Pull from diverse aesthetic tags for a cinematic rotating backdrop
+const HERO_TAGS = [
+  'brutalism', 'glitch', 'architecture', 'monochrome', 'photography',
+  'abstract', 'noir', 'geometric', 'landscape', 'generative',
+  'minimal', 'cyberpunk', 'surreal', 'texture', 'collage',
 ];
-
-// Fallback: search for visually rich art from known artists/tags
-const HERO_SEARCH_QUERIES = [
-  { alias: '%zancan%' },
-  { alias: '%Iskra Velitchkova%' },
-  { alias: '%Joanie Lemercier%' },
-  { alias: '%Mario Klingemann%' },
-  { tag: 'generative' },
-  { tag: 'landscape' },
-  { tag: 'abstract' },
-];
+const HERO_SLIDE_COUNT = 8; // how many slides in the rotation
+const HERO_ROTATE_MS = 7000; // time per slide
 
 let heroBgImgs = [];
 let currentBg = 0;
@@ -1228,66 +1218,78 @@ function startHeroRotation() {
     heroBgImgs[currentBg].classList.remove('active');
     currentBg = (currentBg + 1) % heroBgImgs.length;
     heroBgImgs[currentBg].classList.add('active');
-  }, 6000);
+  }, HERO_ROTATE_MS);
 }
 
 async function loadHeroArt() {
   const heroBg = document.getElementById('heroBg');
 
-  // Strategy 1: Fetch curated pks
-  try {
-    const resp = await fetch('/api/proxy/objkt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query HeroArt($pks: [bigint!]!) {
-          token(where: { pk: { _in: $pks }, supply: { _gt: "0" } }) {
-            pk display_uri thumbnail_uri
-          }
-        }`,
-        variables: { pks: HERO_CURATED_PKS }
-      })
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      const tokens = data.data?.token || [];
-      if (tokens.length >= 3) {
-        renderHeroSlides(heroBg, tokens);
-        return;
-      }
-    }
-  } catch (e) { console.warn('Hero curated fetch failed:', e); }
+  // Pick 4 random tags, fire queries in parallel for diversity
+  const shuffled = [...HERO_TAGS].sort(() => Math.random() - 0.5);
+  const picks = shuffled.slice(0, 4);
 
-  // Strategy 2: Search for art from known artists
   try {
-    const resp = await fetch('/api/proxy/objkt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        query: `query HeroSearch {
-          token(
-            where: {
-              creators: { holder: { alias: { _ilike: "%zancan%" } } },
-              supply: { _gt: "0" },
-              flag: { _neq: "banned" }
-            },
-            order_by: { pk: desc },
-            limit: 6
-          ) { pk display_uri thumbnail_uri }
-        }`
-      })
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      const tokens = data.data?.token || [];
+    const promises = picks.map(tag => objktQuery({
+      query: `query HeroBg($tag: String!) {
+        tag(where: { name: { _eq: $tag } }, limit: 1) {
+          tokens(
+            where: { token: { supply: { _gt: "0" }, flag: { _neq: "banned" } } },
+            limit: 8,
+            order_by: { token: { pk: desc } }
+          ) { token { pk display_uri thumbnail_uri } }
+        }
+      }`,
+      variables: { tag }
+    }));
+
+    const results = await Promise.all(promises);
+
+    // Collect all tokens, pick 1-2 from each tag for variety
+    let allTokens = [];
+    results.forEach(r => {
+      const tags = r.data?.tag || [];
+      const tokens = tags.flatMap(t => (t.tokens || []).map(tt => tt.token).filter(Boolean));
       if (tokens.length > 0) {
-        renderHeroSlides(heroBg, tokens);
-        return;
+        // Shuffle and pick up to 2 from this tag
+        const tagShuffled = tokens.sort(() => Math.random() - 0.5);
+        allTokens.push(...tagShuffled.slice(0, 2));
       }
-    }
-  } catch (e) { console.warn('Hero search fetch failed:', e); }
+    });
 
-  // Strategy 3: Fallback to a gradient if everything fails
+    // Deduplicate by pk and limit to HERO_SLIDE_COUNT
+    const seen = new Set();
+    const unique = allTokens.filter(t => {
+      if (!t?.pk || seen.has(t.pk)) return false;
+      seen.add(t.pk);
+      return true;
+    });
+    const final = unique.sort(() => Math.random() - 0.5).slice(0, HERO_SLIDE_COUNT);
+
+    if (final.length >= 2) {
+      renderHeroSlides(heroBg, final);
+      return;
+    }
+  } catch (e) { console.warn('Hero tag search failed:', e); }
+
+  // Fallback: broad search for any popular art
+  try {
+    const resp = await objktQuery({
+      query: `query HeroFallback {
+        token(
+          where: { supply: { _gt: "0" }, flag: { _neq: "banned" }, display_uri: { _is_null: false } },
+          order_by: { pk: desc },
+          limit: 10
+        ) { pk display_uri thumbnail_uri }
+      }`
+    });
+    const tokens = resp.data?.token || [];
+    if (tokens.length >= 2) {
+      renderHeroSlides(heroBg, tokens.slice(0, HERO_SLIDE_COUNT));
+      return;
+    }
+  } catch (e) { console.warn('Hero fallback failed:', e); }
+
+  // Last resort gradient
   heroBg.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
 }
 
@@ -1296,9 +1298,9 @@ function renderHeroSlides(container, tokens) {
   const urls = tokens.map(t => resolveIpfs(t.display_uri || t.thumbnail_uri || '')).filter(Boolean);
   if (!urls.length) return;
 
-  // Preload first image before revealing
+  // Preload first image, then reveal all slides
   const preload = new Image();
-  preload.onload = () => {
+  const buildSlides = () => {
     urls.forEach((url, i) => {
       const div = document.createElement('div');
       div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
@@ -1309,18 +1311,8 @@ function renderHeroSlides(container, tokens) {
     currentBg = 0;
     startHeroRotation();
   };
-  preload.onerror = () => {
-    // Still render even if preload fails
-    urls.forEach((url, i) => {
-      const div = document.createElement('div');
-      div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
-      div.style.backgroundImage = `url('${url}')`;
-      container.appendChild(div);
-    });
-    heroBgImgs = container.querySelectorAll('.hero-bg-img');
-    currentBg = 0;
-    startHeroRotation();
-  };
+  preload.onload = buildSlides;
+  preload.onerror = buildSlides;
   preload.src = urls[0];
 }
 
