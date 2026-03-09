@@ -12,6 +12,8 @@
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0a0a0a">
 <link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://cf-ipfs.com" crossorigin>
+<link rel="preconnect" href="https://nftstorage.link" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
@@ -127,37 +129,44 @@ a { color: inherit; text-decoration: none; }
   overflow: hidden;
 }
 .hero-bg-img {
-  position: absolute; inset: 0;
+  position: absolute; inset: -20px;
   background-size: cover;
   background-position: center;
   opacity: 0;
   transition: opacity 2s ease-in-out;
   filter: brightness(.7) saturate(.6);
+  animation: kenBurns 12s ease-in-out infinite alternate;
 }
 .hero-bg-img.active { opacity: 1; }
+@keyframes kenBurns {
+  from { transform: scale(1); }
+  to { transform: scale(1.08); }
+}
 .hero-bg::after {
   content: '';
   position: absolute; inset: 0;
-  background: linear-gradient(
-    to bottom,
-    rgba(10,10,10,.4) 0%,
-    rgba(10,10,10,.5) 40%,
-    rgba(10,10,10,.7) 80%,
-    rgba(10,10,10,.9) 100%
-  );
+  background:
+    radial-gradient(ellipse at center, transparent 30%, rgba(10,10,10,.6) 100%),
+    linear-gradient(
+      to bottom,
+      rgba(10,10,10,.4) 0%,
+      rgba(10,10,10,.5) 40%,
+      rgba(10,10,10,.7) 80%,
+      rgba(10,10,10,.9) 100%
+    );
   z-index: 1;
 }
 
 .hero-content {
   position: relative; z-index: 2;
   display: flex;
-  flex-direction: row;
-  align-items: flex-end;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
-  gap: 80px;
+  gap: 40px;
   width: 100%;
   max-width: 1400px;
-  margin: -30px auto 0;
+  margin: 0 auto;
 }
 .hero-left { flex: 0 0 auto; }
 .hero-right {
@@ -165,30 +174,73 @@ a { color: inherit; text-decoration: none; }
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: 32px;
+  gap: 24px;
   max-width: 520px;
+  width: 100%;
   margin-top: 0;
-  padding: 40px;
+  padding: 32px 40px;
   background: rgba(255,255,255,.04);
   border-radius: 20px;
   backdrop-filter: blur(10px);
   border: 1px solid var(--border);
+  opacity: 0;
+  transform: translateY(16px);
+  animation: heroCardIn 0.7s cubic-bezier(.16,1,.3,1) 1.2s forwards;
+}
+@keyframes heroCardIn {
+  to { opacity: 1; transform: translateY(0); }
+}
+.hero-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  color: var(--warm);
+  text-align: center;
+  opacity: 0;
+  animation: heroCardIn 0.5s ease 1.4s forwards;
 }
 
 .hero h1 {
-  font-family: 'Arial Black', 'Helvetica Neue', Arial, sans-serif;
-  font-size: clamp(64px, 9vw, 140px);
-  font-weight: 900;
-  line-height: 0.82;
-  letter-spacing: -.04em;
+  font-family: var(--font-display);
+  font-size: clamp(64px, 9vw, 130px);
+  font-weight: 400;
+  line-height: 0.95;
+  letter-spacing: -.02em;
   text-transform: none;
-  margin: -5px 0 0 0;
-  text-align: left;
+  margin: 0;
+  text-align: center;
+}
+
+.hero-word {
+  display: block;
+  opacity: 0;
+  filter: blur(8px);
+  transform: translateY(20px);
+  animation: heroWordIn 0.8s cubic-bezier(.16,1,.3,1) forwards;
+}
+.hero-word-1 { animation-delay: 0.2s; }
+.hero-word-2 { animation-delay: 0.5s; font-style: italic; }
+.hero-word-3 { animation-delay: 0.8s; font-weight: 700; color: var(--warm); }
+
+@keyframes heroWordIn {
+  to { opacity: 1; filter: blur(0); transform: translateY(0); }
 }
 
 .hero-title-filled {
   color: var(--cream);
   display: block;
+  position: relative;
+}
+.hero-title-filled::before {
+  content: '';
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120%; height: 150%;
+  background: radial-gradient(ellipse, rgba(196,168,130,.06) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: -1;
 }
 
 .hero-sub {
@@ -198,6 +250,7 @@ a { color: inherit; text-decoration: none; }
   font-weight: 400;
   letter-spacing: -.01em;
   margin: 0;
+  display: none;
 }
 
 /* Search bar */
@@ -236,9 +289,11 @@ a { color: inherit; text-decoration: none; }
 /* Suggestions */
 .suggestions {
   margin-top: 16px;
-  display: flex; align-items: center; justify-content: flex-start;
+  display: flex; align-items: center; justify-content: center;
   gap: 8px; flex-wrap: wrap;
   transition: opacity .2s ease, transform .2s ease;
+  opacity: 0;
+  animation: heroCardIn 0.5s ease 1.5s forwards;
 }
 .suggestion {
   padding: 6px 14px; border-radius: 100px;
@@ -434,8 +489,10 @@ a { color: inherit; text-decoration: none; }
 
 .masonry-item img {
   width: 100%; height: auto; display: block;
-  transition: transform .5s cubic-bezier(.16,1,.3,1);
+  opacity: 0;
+  transition: transform .5s cubic-bezier(.16,1,.3,1), opacity .4s ease;
 }
+.masonry-item img.loaded { opacity: 1; }
 
 .masonry-overlay {
   position: absolute; inset: 0;
@@ -471,9 +528,18 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 16px;
   border-radius: 12px; overflow: hidden;
   background: var(--surface);
-  animation: shimmer 1.5s ease-in-out infinite;
+  position: relative;
 }
-@keyframes shimmer { 0%,100% { opacity:.4 } 50% { opacity:.7 } }
+.skeleton-item::after {
+  content: '';
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.04) 50%, transparent 100%);
+  animation: shimmerSweep 1.5s ease-in-out infinite;
+}
+@keyframes shimmerSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
 
 /* ═══════════════════════════════════════
    LIGHTBOX
@@ -893,17 +959,15 @@ footer {
     padding: 80px 20px 200px;
   }
   .hero-content {
-    flex-direction: column;
-    gap: 32px; align-items: center;
-    margin: 0 auto; padding-bottom: 40px;
+    gap: 28px;
+    padding-bottom: 40px;
   }
   .hero h1 {
     font-size: clamp(48px, 11vw, 72px);
-    line-height: 0.85; text-align: center;
+    line-height: 0.95; text-align: center;
   }
   .hero-left { width: 100%; }
-  .hero-right { max-width: 100%; width: 100%; padding: 32px 24px; }
-  .hero-sub { font-size: 15px; line-height: 1.5; text-align: center; }
+  .hero-right { max-width: 100%; width: 100%; padding: 24px 20px; }
   .suggestions .suggestion:nth-child(n+4) { display: none; }
   .sources-wrapper { width: calc(100% - 32px); bottom: 40px; }
   .sources { gap: 10px; }
@@ -950,16 +1014,14 @@ footer {
   <div class="hero-content">
     <div class="hero-left">
       <h1 class="hero-title-filled">
-        Discover<br>
-        Digital<br>
-        Art
+        <span class="hero-word hero-word-1">Discover</span>
+        <span class="hero-word hero-word-2">Digital</span>
+        <span class="hero-word hero-word-3">Art</span>
       </h1>
     </div>
 
     <div class="hero-right">
-      <p class="hero-sub">
-        <strong>Explore the story of digital art.</strong> Search across the Tezos art ecosystem — generative art, photography, illustration, 1/1s, and everything in between.
-      </p>
+      <div class="hero-eyebrow">Search the Tezos art ecosystem</div>
 
       <div class="search-container">
       <div class="search-bar" id="searchBar">
@@ -970,12 +1032,12 @@ footer {
         </button>
       </div>
       <div class="suggestions" id="suggestions">
-        <span class="suggestion">generative art on Tezos</span>
-        <span class="suggestion">pixel art collectibles</span>
-        <span class="suggestion">AI-generated surrealism</span>
-        <span class="suggestion">abstract geometric NFTs</span>
-        <span class="suggestion">1/1 photography</span>
-        <span class="suggestion">glitch art and distortion</span>
+        <span class="suggestion">cubism</span>
+        <span class="suggestion">glitch</span>
+        <span class="suggestion">generative</span>
+        <span class="suggestion">landscape</span>
+        <span class="suggestion">portrait</span>
+        <span class="suggestion">abstract</span>
       </div>
       <button class="refresh-btn" id="refreshSuggestions" title="More suggestions">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
@@ -1231,18 +1293,35 @@ async function loadHeroArt() {
 
 function renderHeroSlides(container, tokens) {
   container.innerHTML = '';
-  tokens.forEach((t, i) => {
-    const uri = t.display_uri || t.thumbnail_uri || '';
-    const url = resolveIpfs(uri);
-    if (!url) return;
-    const div = document.createElement('div');
-    div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
-    div.style.backgroundImage = `url('${url}')`;
-    container.appendChild(div);
-  });
-  heroBgImgs = container.querySelectorAll('.hero-bg-img');
-  currentBg = 0;
-  startHeroRotation();
+  const urls = tokens.map(t => resolveIpfs(t.display_uri || t.thumbnail_uri || '')).filter(Boolean);
+  if (!urls.length) return;
+
+  // Preload first image before revealing
+  const preload = new Image();
+  preload.onload = () => {
+    urls.forEach((url, i) => {
+      const div = document.createElement('div');
+      div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
+      div.style.backgroundImage = `url('${url}')`;
+      container.appendChild(div);
+    });
+    heroBgImgs = container.querySelectorAll('.hero-bg-img');
+    currentBg = 0;
+    startHeroRotation();
+  };
+  preload.onerror = () => {
+    // Still render even if preload fails
+    urls.forEach((url, i) => {
+      const div = document.createElement('div');
+      div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
+      div.style.backgroundImage = `url('${url}')`;
+      container.appendChild(div);
+    });
+    heroBgImgs = container.querySelectorAll('.hero-bg-img');
+    currentBg = 0;
+    startHeroRotation();
+  };
+  preload.src = urls[0];
 }
 
 // Hero loads after all functions are defined (see bottom of script)
@@ -1251,40 +1330,33 @@ function renderHeroSlides(container, tokens) {
 // SUGGESTIONS
 // ═══════════════════════════════════════
 const DEFAULT_SUGGESTIONS = [
-  'generative art on Tezos',
-  'pixel art collectibles',
-  'AI-generated surrealism',
-  'abstract geometric NFTs',
-  '1/1 photography',
-  'glitch art and distortion',
+  'cubism',
+  'glitch',
+  'generative',
+  'landscape',
+  'portrait',
+  'abstract',
 ];
 
 const EXTRA_SUGGESTIONS = [
-  'the feeling of Blade Runner but as digital art',
-  'generative landscapes with organic forms',
-  'cyberpunk portraits and identity',
-  'minimalist line art on chain',
-  'noise and static as aesthetic',
-  'long-form generative collections',
-  'photography NFTs that feel like film',
-  'hand-drawn digital illustrations',
-  'pixel art worlds and scenes',
-  'abstract color field explorations',
-  'data visualization as art',
-  'AI art collaboration pieces',
-  'dark moody atmosphere',
-  'light and shadow experiments',
-  'the texture of analog in digital',
-  'music visualizers and audio reactive',
-  'geometric patterns infinite',
-  'portraits reimagined through code',
-  'nature rendered algorithmically',
-  'brutalist digital architecture',
-  'retro computing aesthetics',
-  'glitch photography and decay',
-  'onchain generative art',
-  'fiber and textile digital art',
-  'calligraphy meets code',
+  'pixel art',
+  'photography',
+  'surreal',
+  'geometric',
+  'minimal',
+  'botanical',
+  'skull',
+  'cyberpunk',
+  'noir',
+  'watercolor',
+  'architecture',
+  'fractal',
+  'noise',
+  'textile',
+  'collage',
+  'psychedelic',
+  'monochrome',
+  'neon',
 ];
 
 let suggestionPool = [...EXTRA_SUGGESTIONS];
@@ -1334,9 +1406,10 @@ document.getElementById('refreshSuggestions').addEventListener('click', function
 // IPFS RESOLUTION
 // ═══════════════════════════════════════
 const IPFS_GATEWAYS = [
-  'https://ipfs.io/ipfs/',
+  'https://cf-ipfs.com/ipfs/',
   'https://nftstorage.link/ipfs/',
   'https://w3s.link/ipfs/',
+  'https://ipfs.io/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
 ];
 const IPFS_GATEWAY = IPFS_GATEWAYS[0];
@@ -2274,7 +2347,7 @@ function createMasonryItem(item, delay) {
       : `<img src="${item.thumbUrl || item.imageUrl}" alt="${item.title}" loading="lazy"
            data-full="${item.imageUrl || ''}"
            onerror="handleImgError(this)"
-           onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'" />`
+           onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'; else this.classList.add('loaded')" />`
     }
     <div class="masonry-overlay">
       <div class="masonry-title">${item.title}</div>
