@@ -1512,14 +1512,29 @@ async function searchObjkt(query, offset = 0, limit = 50) {
     const results = await Promise.all(promises);
 
     // Collect tokens in priority order: creator > content > tag > word
+    // If creator search found results, skip tag results (tags are often spam-tagged with artist names)
     let allTokens = [];
+    let creatorHits = 0;
     results.forEach((r, i) => {
       const strategy = strategyMap[i];
-      if (strategy === 'tag' && r.data?.tag) {
-        const tagTokens = r.data.tag.flatMap(t =>
-          (t.tokens || []).map(tt => tt.token).filter(Boolean)
-        );
-        allTokens.push(...tagTokens);
+      if (strategy === 'creator') {
+        const tokens = r.data?.token || [];
+        creatorHits = tokens.length;
+        allTokens.push(...tokens);
+      }
+    });
+    results.forEach((r, i) => {
+      const strategy = strategyMap[i];
+      if (strategy === 'creator') return; // already added
+      if (strategy === 'tag') {
+        // Only include tag results if no creator was found
+        // (tags are useful for concepts like "landscape", but spam-tagged for artist names)
+        if (creatorHits === 0 && r.data?.tag) {
+          const tagTokens = r.data.tag.flatMap(t =>
+            (t.tokens || []).map(tt => tt.token).filter(Boolean)
+          );
+          allTokens.push(...tagTokens);
+        }
       } else {
         allTokens.push(...(r.data?.token || []));
       }
