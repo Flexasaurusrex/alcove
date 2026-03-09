@@ -945,13 +945,7 @@ footer {
 
 <!-- HERO -->
 <section class="hero" id="hero">
-  <div class="hero-bg" id="heroBg">
-    <div class="hero-bg-img active" style="background-image:url('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1920&q=80')"></div>
-    <div class="hero-bg-img" style="background-image:url('https://images.unsplash.com/photo-1634017839464-5c339ebe3cb4?w=1920&q=80')"></div>
-    <div class="hero-bg-img" style="background-image:url('https://images.unsplash.com/photo-1547826039-bfc35e0f1ea8?w=1920&q=80')"></div>
-    <div class="hero-bg-img" style="background-image:url('https://images.unsplash.com/photo-1604871000636-074fa5117945?w=1920&q=80')"></div>
-    <div class="hero-bg-img" style="background-image:url('https://images.unsplash.com/photo-1563089145-599997674d42?w=1920&q=80')"></div>
-  </div>
+  <div class="hero-bg" id="heroBg"></div>
 
   <div class="hero-content">
     <div class="hero-left">
@@ -1140,15 +1134,118 @@ footer {
 
 <script>
 // ═══════════════════════════════════════
-// HERO BACKGROUND ROTATION
+// HERO BACKGROUND — LIVE ART FROM OBJKT
 // ═══════════════════════════════════════
-const bgImgs = document.querySelectorAll('.hero-bg-img');
+// Curated pks of iconic Tezos artworks from top artists
+const HERO_CURATED_PKS = [
+  73675170, // zancan — "Kumono Shingou #0" (Tree_Line)
+  73675036, // zancan — "A Long Thread" (Tree_Line)
+  73674984, // zancan — "A Bugged Forest" (Tree_Line)
+  73674930, // zancan — "(kinder)Garden, Monuments" (Tree_Line)
+];
+
+// Fallback: search for visually rich art from known artists/tags
+const HERO_SEARCH_QUERIES = [
+  { alias: '%zancan%' },
+  { alias: '%Iskra Velitchkova%' },
+  { alias: '%Joanie Lemercier%' },
+  { alias: '%Mario Klingemann%' },
+  { tag: 'generative' },
+  { tag: 'landscape' },
+  { tag: 'abstract' },
+];
+
+let heroBgImgs = [];
 let currentBg = 0;
-setInterval(() => {
-  bgImgs[currentBg].classList.remove('active');
-  currentBg = (currentBg + 1) % bgImgs.length;
-  bgImgs[currentBg].classList.add('active');
-}, 6000);
+let heroInterval = null;
+
+function startHeroRotation() {
+  if (heroInterval) clearInterval(heroInterval);
+  if (heroBgImgs.length < 2) return;
+  heroInterval = setInterval(() => {
+    heroBgImgs[currentBg].classList.remove('active');
+    currentBg = (currentBg + 1) % heroBgImgs.length;
+    heroBgImgs[currentBg].classList.add('active');
+  }, 6000);
+}
+
+async function loadHeroArt() {
+  const heroBg = document.getElementById('heroBg');
+
+  // Strategy 1: Fetch curated pks
+  try {
+    const resp = await fetch('/api/proxy/objkt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query HeroArt($pks: [bigint!]!) {
+          token(where: { pk: { _in: $pks }, supply: { _gt: "0" } }) {
+            pk display_uri thumbnail_uri
+          }
+        }`,
+        variables: { pks: HERO_CURATED_PKS }
+      })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const tokens = data.data?.token || [];
+      if (tokens.length >= 3) {
+        renderHeroSlides(heroBg, tokens);
+        return;
+      }
+    }
+  } catch (e) { console.warn('Hero curated fetch failed:', e); }
+
+  // Strategy 2: Search for art from known artists
+  try {
+    const resp = await fetch('/api/proxy/objkt', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        query: `query HeroSearch {
+          token(
+            where: {
+              creators: { holder: { alias: { _ilike: "%zancan%" } } },
+              supply: { _gt: "0" },
+              flag: { _neq: "banned" }
+            },
+            order_by: { pk: desc },
+            limit: 6
+          ) { pk display_uri thumbnail_uri }
+        }`
+      })
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      const tokens = data.data?.token || [];
+      if (tokens.length > 0) {
+        renderHeroSlides(heroBg, tokens);
+        return;
+      }
+    }
+  } catch (e) { console.warn('Hero search fetch failed:', e); }
+
+  // Strategy 3: Fallback to a gradient if everything fails
+  heroBg.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
+}
+
+function renderHeroSlides(container, tokens) {
+  container.innerHTML = '';
+  tokens.forEach((t, i) => {
+    const uri = t.display_uri || t.thumbnail_uri || '';
+    const url = resolveIpfs(uri);
+    if (!url) return;
+    const div = document.createElement('div');
+    div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
+    div.style.backgroundImage = `url('${url}')`;
+    container.appendChild(div);
+  });
+  heroBgImgs = container.querySelectorAll('.hero-bg-img');
+  currentBg = 0;
+  startHeroRotation();
+}
+
+loadHeroArt();
 
 // ═══════════════════════════════════════
 // SUGGESTIONS
@@ -1319,18 +1416,39 @@ async function searchObjkt(query, offset = 0, limit = 50) {
   try {
     const searchTerm = `%${query}%`;
     const words = query.trim().split(/\s+/).filter(w => w.length >= 2);
+    const queryLower = query.trim().toLowerCase();
 
-    // Strategy 1: Multi-field _ilike search (our existing approach)
-    const mainQuery = {
-      query: `query SearchTokens($term: String!, $offset: Int!, $limit: Int!) {
+    const promises = [];
+    let strategyMap = []; // track which promise is which
+
+    // Strategy 1: Creator alias match (highest priority — "zancan" finds zancan's art)
+    if (offset === 0) {
+      promises.push(objktQuery({
+        query: `query CreatorSearch($term: String!, $limit: Int!) {
+          token(
+            where: {
+              creators: { holder: { alias: { _ilike: $term } } },
+              supply: { _gt: "0" },
+              flag: { _neq: "banned" }
+            },
+            order_by: { pk: desc },
+            limit: $limit
+          ) { ${TOKEN_FIELDS} }
+        }`,
+        variables: { term: searchTerm, limit: 30 }
+      }));
+      strategyMap.push('creator');
+    }
+
+    // Strategy 2: Name + description + collection search (no tag _ilike — avoids "not a zancan" problem)
+    promises.push(objktQuery({
+      query: `query ContentSearch($term: String!, $offset: Int!, $limit: Int!) {
         token(
           where: {
             _or: [
               { name: { _ilike: $term } },
               { description: { _ilike: $term } },
-              { tags: { tag: { name: { _ilike: $term } } } },
-              { fa: { name: { _ilike: $term } } },
-              { creators: { holder: { alias: { _ilike: $term } } } }
+              { fa: { name: { _ilike: $term } } }
             ],
             supply: { _gt: "0" },
             flag: { _neq: "banned" }
@@ -1341,68 +1459,71 @@ async function searchObjkt(query, offset = 0, limit = 50) {
         ) { ${TOKEN_FIELDS} }
       }`,
       variables: { term: searchTerm, offset, limit }
-    };
+    }));
+    strategyMap.push('content');
 
-    // Strategy 2: Tag-first search — find matching tags, then get top tokens with those tags
-    // This catches tokens that are tagged but may not have the term in name/description
-    const tagQuery = offset === 0 ? {
-      query: `query TagSearch($term: String!) {
-        tag(where: { name: { _ilike: $term } }, order_by: { token_count: desc }, limit: 10) {
-          id name token_count
-          tokens(
-            where: { token: { supply: { _gt: "0" }, flag: { _neq: "banned" } } },
-            limit: 30
-          ) {
-            token { ${TOKEN_FIELDS} }
-          }
-        }
-      }`,
-      variables: { term: searchTerm }
-    } : null;
-
-    // Strategy 3: If multi-word query, also search individual words
-    const wordQueries = (offset === 0 && words.length > 1) ? words.slice(0, 3).map(word => ({
-      query: `query WordSearch($term: String!) {
-        token(
-          where: {
+    // Strategy 3: Exact tag match (finds tags named exactly "zancan", not "not a zancan")
+    if (offset === 0) {
+      // Search for exact tag and tags that START with the query
+      promises.push(objktQuery({
+        query: `query TagSearch($exact: String!, $startsWith: String!) {
+          tag(where: {
             _or: [
-              { name: { _ilike: $term } },
-              { tags: { tag: { name: { _ilike: $term } } } }
-            ],
-            supply: { _gt: "0" },
-            flag: { _neq: "banned" }
-          },
-          order_by: { pk: desc },
-          limit: 20
-        ) { ${TOKEN_FIELDS} }
-      }`,
-      variables: { term: `%${word}%` }
-    })) : [];
+              { name: { _eq: $exact } },
+              { name: { _ilike: $startsWith } }
+            ]
+          }, order_by: { token_count: desc }, limit: 10) {
+            id name token_count
+            tokens(
+              where: { token: { supply: { _gt: "0" }, flag: { _neq: "banned" } } },
+              limit: 30
+            ) { token { ${TOKEN_FIELDS} } }
+          }
+        }`,
+        variables: { exact: queryLower, startsWith: `${queryLower}%` }
+      }));
+      strategyMap.push('tag');
+    }
 
-    // Run all strategies in parallel
-    const promises = [objktQuery(mainQuery)];
-    if (tagQuery) promises.push(objktQuery(tagQuery));
-    wordQueries.forEach(q => promises.push(objktQuery(q)));
+    // Strategy 4: Word-split for multi-word queries
+    if (offset === 0 && words.length > 1) {
+      for (const word of words.slice(0, 3)) {
+        promises.push(objktQuery({
+          query: `query WordSearch($term: String!) {
+            token(
+              where: {
+                _or: [
+                  { name: { _ilike: $term } },
+                  { creators: { holder: { alias: { _ilike: $term } } } }
+                ],
+                supply: { _gt: "0" },
+                flag: { _neq: "banned" }
+              },
+              order_by: { pk: desc },
+              limit: 20
+            ) { ${TOKEN_FIELDS} }
+          }`,
+          variables: { term: `%${word}%` }
+        }));
+        strategyMap.push('word');
+      }
+    }
 
     const results = await Promise.all(promises);
 
-    // Collect all tokens
-    let allTokens = results[0].data?.token || [];
-
-    // Add tag-based results
-    if (tagQuery && results[1]?.data?.tag) {
-      const tagTokens = results[1].data.tag.flatMap(t =>
-        (t.tokens || []).map(tt => tt.token).filter(Boolean)
-      );
-      allTokens.push(...tagTokens);
-    }
-
-    // Add word-search results
-    const wordStart = tagQuery ? 2 : 1;
-    for (let i = wordStart; i < results.length; i++) {
-      const wordTokens = results[i]?.data?.token || [];
-      allTokens.push(...wordTokens);
-    }
+    // Collect tokens in priority order: creator > content > tag > word
+    let allTokens = [];
+    results.forEach((r, i) => {
+      const strategy = strategyMap[i];
+      if (strategy === 'tag' && r.data?.tag) {
+        const tagTokens = r.data.tag.flatMap(t =>
+          (t.tokens || []).map(tt => tt.token).filter(Boolean)
+        );
+        allTokens.push(...tagTokens);
+      } else {
+        allTokens.push(...(r.data?.token || []));
+      }
+    });
 
     // Deduplicate by pk
     const seen = new Set();
