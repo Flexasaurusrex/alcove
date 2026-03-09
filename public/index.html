@@ -1245,7 +1245,7 @@ function renderHeroSlides(container, tokens) {
   startHeroRotation();
 }
 
-loadHeroArt();
+// Hero loads after all functions are defined (see bottom of script)
 
 // ═══════════════════════════════════════
 // SUGGESTIONS
@@ -2427,6 +2427,11 @@ document.addEventListener('keydown', (e) => {
     }
   }
 });
+
+// ═══════════════════════════════════════
+// INIT: Load hero art (must be after resolveIpfs is defined)
+// ═══════════════════════════════════════
+loadHeroArt();
 </script>
 
 </body>
