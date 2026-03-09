@@ -1288,93 +1288,129 @@ function resolveIpfs(uri) {
 
 // Search tokens by name, description, tags, AND collection name
 // Also filter to image-only content for better results
-async function searchObjkt(query, offset = 0, limit = 30) {
+const TOKEN_FIELDS = `
+  pk token_id name description mime artifact_uri display_uri thumbnail_uri fa_contract
+  fa { name collection_id path creator_address floor_price editions }
+  creators { holder { alias address } }
+  tags { tag { name } }
+  lowest_ask timestamp
+`;
+
+async function objktQuery(body) {
   try {
-    const searchTerm = `%${query}%`;
-
-    // Two parallel searches: direct token match + collection name match
-    const tokenQuery = {
-      query: `
-        query SearchTokens($term: String!, $offset: Int!, $limit: Int!) {
-          token(
-            where: {
-              _or: [
-                { name: { _ilike: $term } },
-                { description: { _ilike: $term } },
-                { tags: { tag: { name: { _ilike: $term } } } },
-                { fa: { name: { _ilike: $term } } },
-                { creators: { holder: { alias: { _ilike: $term } } } }
-              ],
-              display_uri: { _neq: "" },
-              supply: { _gt: "0" },
-              flag: { _neq: "banned" }
-            },
-            order_by: { pk: desc },
-            offset: $offset,
-            limit: $limit
-          ) {
-            pk
-            token_id
-            name
-            description
-            mime
-            artifact_uri
-            display_uri
-            thumbnail_uri
-            fa_contract
-            fa {
-              name
-              collection_id
-              path
-              creator_address
-              floor_price
-              editions
-            }
-            creators {
-              holder {
-                alias
-                address
-              }
-            }
-            tags {
-              tag {
-                name
-              }
-            }
-            lowest_ask
-            timestamp
-          }
-        }
-      `,
-      variables: {
-        term: searchTerm,
-        offset: offset,
-        limit: limit,
-      }
-    };
-
     const resp = await fetch('/api/proxy/objkt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tokenQuery),
+      body: JSON.stringify(body),
     });
+    if (resp.ok) return await resp.json();
+    // Fallback: direct
+    const direct = await fetch('https://data.objkt.com/v3/graphql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (direct.ok) return await direct.json();
+  } catch (e) { console.warn('OBJKT query error:', e); }
+  return { data: {} };
+}
 
-    let tokens = [];
-    if (resp.ok) {
-      const data = await resp.json();
-      tokens = data.data?.token || [];
-    } else {
-      // Fallback: try direct
-      const directResp = await fetch('https://data.objkt.com/v3/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tokenQuery),
-      });
-      if (directResp.ok) {
-        const directData = await directResp.json();
-        tokens = directData.data?.token || [];
-      }
+async function searchObjkt(query, offset = 0, limit = 50) {
+  try {
+    const searchTerm = `%${query}%`;
+    const words = query.trim().split(/\s+/).filter(w => w.length >= 2);
+
+    // Strategy 1: Multi-field _ilike search (our existing approach)
+    const mainQuery = {
+      query: `query SearchTokens($term: String!, $offset: Int!, $limit: Int!) {
+        token(
+          where: {
+            _or: [
+              { name: { _ilike: $term } },
+              { description: { _ilike: $term } },
+              { tags: { tag: { name: { _ilike: $term } } } },
+              { fa: { name: { _ilike: $term } } },
+              { creators: { holder: { alias: { _ilike: $term } } } }
+            ],
+            supply: { _gt: "0" },
+            flag: { _neq: "banned" }
+          },
+          order_by: { pk: desc },
+          offset: $offset,
+          limit: $limit
+        ) { ${TOKEN_FIELDS} }
+      }`,
+      variables: { term: searchTerm, offset, limit }
+    };
+
+    // Strategy 2: Tag-first search — find matching tags, then get top tokens with those tags
+    // This catches tokens that are tagged but may not have the term in name/description
+    const tagQuery = offset === 0 ? {
+      query: `query TagSearch($term: String!) {
+        tag(where: { name: { _ilike: $term } }, order_by: { token_count: desc }, limit: 10) {
+          id name token_count
+          tokens(
+            where: { token: { supply: { _gt: "0" }, flag: { _neq: "banned" } } },
+            limit: 30
+          ) {
+            token { ${TOKEN_FIELDS} }
+          }
+        }
+      }`,
+      variables: { term: searchTerm }
+    } : null;
+
+    // Strategy 3: If multi-word query, also search individual words
+    const wordQueries = (offset === 0 && words.length > 1) ? words.slice(0, 3).map(word => ({
+      query: `query WordSearch($term: String!) {
+        token(
+          where: {
+            _or: [
+              { name: { _ilike: $term } },
+              { tags: { tag: { name: { _ilike: $term } } } }
+            ],
+            supply: { _gt: "0" },
+            flag: { _neq: "banned" }
+          },
+          order_by: { pk: desc },
+          limit: 20
+        ) { ${TOKEN_FIELDS} }
+      }`,
+      variables: { term: `%${word}%` }
+    })) : [];
+
+    // Run all strategies in parallel
+    const promises = [objktQuery(mainQuery)];
+    if (tagQuery) promises.push(objktQuery(tagQuery));
+    wordQueries.forEach(q => promises.push(objktQuery(q)));
+
+    const results = await Promise.all(promises);
+
+    // Collect all tokens
+    let allTokens = results[0].data?.token || [];
+
+    // Add tag-based results
+    if (tagQuery && results[1]?.data?.tag) {
+      const tagTokens = results[1].data.tag.flatMap(t =>
+        (t.tokens || []).map(tt => tt.token).filter(Boolean)
+      );
+      allTokens.push(...tagTokens);
     }
+
+    // Add word-search results
+    const wordStart = tagQuery ? 2 : 1;
+    for (let i = wordStart; i < results.length; i++) {
+      const wordTokens = results[i]?.data?.token || [];
+      allTokens.push(...wordTokens);
+    }
+
+    // Deduplicate by pk
+    const seen = new Set();
+    const tokens = allTokens.filter(t => {
+      if (!t?.pk || seen.has(t.pk)) return false;
+      seen.add(t.pk);
+      return true;
+    });
 
     return { tokens };
   } catch (e) {
