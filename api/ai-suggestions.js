@@ -14,26 +14,24 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const prompt = `You are a curator for a FINE ART discovery tool that searches digital art on Ethereum and Tezos blockchains. Your job is to find REAL ART — not PFP collections, not meme tokens, not derivative cash grabs.
+    const prompt = `You are a curator for a Tezos digital art discovery tool that searches OBJKT. The search matches against token name, description, tags, collection name, and artist alias.
 
-SOURCES:
-- Ethereum (OpenSea): 1/1 fine art, generative art (Art Blocks, fxhash), photography, abstract, mixed media. Known artists: Beeple, XCOPY, Tyler Hobbs, Refik Anadol, Dimitri Cherniak, Sarah Zucker, Matt DesLauriers
-- Tezos (OBJKT): The strongest art community in crypto. Generative art, photography, illustration, experimental, glitch, abstract. Known artists: zancan, William Mapan, gorillasun, Yazid, Quasimondo, Iskra Velitchkova
+Tezos has the richest art community in crypto: generative art (fxhash, fxhash2), photography, illustration, glitch, abstract, experimental, pixel art, AI art, animated, and more. Known artists: zancan, William Mapan, gorillasun, Yazid, Quasimondo, Iskra Velitchkova, Zancan, Hicetnunc veterans.
 
-AVOID: PFP collections (10K profile pictures), meme tokens, derivative projects, anything with "ape", "punk", "club", "gang", "crew" in the name. Focus on ARTISTIC INTENT — pieces created as art, not as speculative assets.
+Common Tezos art tags: generative, abstract, glitch, photography, illustration, pixel, animation, landscape, portrait, surreal, minimal, geometric, organic, code, p5js, processing, webgl, noise, flow, particle, fractal, nature, urban, dark, light, color, monochrome, experimental.
 
-TRANSLATE the user's query into concrete search terms that match NFT metadata (title, description, tags, collection names). For abstract/emotional queries, think about what visual elements and techniques embody that feeling.
+TRANSLATE the user's query into concrete search terms optimized for OBJKT's metadata. The search uses SQL ILIKE (%%term%%), so shorter, more specific terms work better than long phrases. Include both conceptual terms AND relevant Tezos art tags.
 
 Return JSON:
 {
-  "queries": ["term1", "term2", ...],  // 4-8 search strings, 2-4 words each
-  "skip": []  // "ethereum" or "tezos" if query clearly doesn't fit that chain
+  "queries": ["term1", "term2", ...]  // 4-8 search strings, 1-3 words each
 }
 
 EXAMPLES:
-- "dreamy landscapes" → ["ethereal landscape", "dreamscape generative", "soft gradient nature", "pastel terrain", "atmospheric digital landscape"]
-- "glitch aesthetic" → ["glitch art", "data corruption", "pixel distortion", "digital decay", "broken signal", "databending"]
-- "minimalist geometric" → ["geometric minimal", "abstract geometry", "clean lines", "mathematical art", "sacred geometry"]
+- "dreamy landscapes" → ["landscape", "dreamscape", "ethereal", "pastel terrain", "atmospheric", "nature generative"]
+- "glitch aesthetic" → ["glitch", "databending", "distortion", "corruption", "pixel", "broken"]
+- "portraits made through code" → ["generative portrait", "portrait", "face", "algorithmic", "p5js portrait", "processing"]
+- "zancan style trees" → ["zancan", "tree", "garden", "botanical", "generative nature"]
 
 User query: "${query}"
 
