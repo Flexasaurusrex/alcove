@@ -489,10 +489,8 @@ a { color: inherit; text-decoration: none; }
 
 .masonry-item img {
   width: 100%; height: auto; display: block;
-  opacity: 0;
   transition: transform .5s cubic-bezier(.16,1,.3,1), opacity .4s ease;
 }
-.masonry-item img.loaded { opacity: 1; }
 
 .masonry-overlay {
   position: absolute; inset: 0;
@@ -2339,7 +2337,7 @@ function createMasonryItem(item, delay) {
       : `<img src="${item.thumbUrl || item.imageUrl}" alt="${item.title}" loading="lazy"
            data-full="${item.imageUrl || ''}"
            onerror="handleImgError(this)"
-           onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'; else this.classList.add('loaded')" />`
+           onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'" />`
     }
     <div class="masonry-overlay">
       <div class="masonry-title">${item.title}</div>
