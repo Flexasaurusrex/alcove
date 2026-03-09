@@ -20,8 +20,8 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:image" content="https://alcove.art/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://cf-ipfs.com" crossorigin>
-<link rel="preconnect" href="https://nftstorage.link" crossorigin>
+<link rel="preconnect" href="https://ipfs.io" crossorigin>
+<link rel="preconnect" href="https://gateway.pinata.cloud" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
@@ -1297,15 +1297,36 @@ async function loadHeroArt() {
   heroBg.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)';
 }
 
+function resolveIpfsWithFallback(uri) {
+  return new Promise(resolve => {
+    const original = resolveIpfs(uri);
+    if (!original) return resolve('');
+    const cidMatch = original.match(/\/ipfs\/(baf[yk][a-z2-7]{50,}|Qm[a-zA-Z0-9]{44,}.*)/);
+    if (!cidMatch) { resolve(original); return; }
+    const cidPath = cidMatch[1];
+    let tried = 0;
+    function tryGw() {
+      if (tried >= IPFS_GATEWAYS.length) { resolve(original); return; }
+      const url = IPFS_GATEWAYS[tried] + cidPath;
+      const img = new Image();
+      img.onload = () => resolve(url);
+      img.onerror = () => { tried++; tryGw(); };
+      img.src = url;
+    }
+    tryGw();
+  });
+}
+
 function renderHeroSlides(container, tokens) {
   container.innerHTML = '';
-  const urls = tokens.map(t => resolveIpfs(t.display_uri || t.thumbnail_uri || '')).filter(Boolean);
-  if (!urls.length) return;
+  const uris = tokens.map(t => t.display_uri || t.thumbnail_uri || '').filter(Boolean);
+  if (!uris.length) return;
 
-  // Preload first image, then reveal all slides
-  const preload = new Image();
-  const buildSlides = () => {
-    urls.forEach((url, i) => {
+  // Resolve all URLs with gateway fallback, then build slides
+  Promise.all(uris.map(uri => resolveIpfsWithFallback(uri))).then(urls => {
+    const valid = urls.filter(Boolean);
+    if (!valid.length) return;
+    valid.forEach((url, i) => {
       const div = document.createElement('div');
       div.className = 'hero-bg-img' + (i === 0 ? ' active' : '');
       div.style.backgroundImage = `url('${url}')`;
@@ -1314,10 +1335,7 @@ function renderHeroSlides(container, tokens) {
     heroBgImgs = container.querySelectorAll('.hero-bg-img');
     currentBg = 0;
     startHeroRotation();
-  };
-  preload.onload = buildSlides;
-  preload.onerror = buildSlides;
-  preload.src = urls[0];
+  });
 }
 
 // Hero loads after all functions are defined (see bottom of script)
@@ -1402,11 +1420,11 @@ document.getElementById('refreshSuggestions').addEventListener('click', function
 // IPFS RESOLUTION
 // ═══════════════════════════════════════
 const IPFS_GATEWAYS = [
-  'https://cf-ipfs.com/ipfs/',
-  'https://nftstorage.link/ipfs/',
-  'https://w3s.link/ipfs/',
   'https://ipfs.io/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
+  'https://w3s.link/ipfs/',
+  'https://nftstorage.link/ipfs/',
+  'https://cf-ipfs.com/ipfs/',
 ];
 const IPFS_GATEWAY = IPFS_GATEWAYS[0];
 
