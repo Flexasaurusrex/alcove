@@ -1034,6 +1034,7 @@ footer {
   </button>
   <div class="lightbox-content">
     <img class="lightbox-img" id="lightboxImg" src="" alt="" />
+    <video class="lightbox-img" id="lightboxVideo" src="" autoplay loop muted playsinline style="display:none;max-height:85vh;max-width:90vw"></video>
     <div class="lightbox-info">
       <div class="lightbox-title" id="lightboxTitle"></div>
       <div class="lightbox-detail" id="lightboxAuthor"></div>
@@ -1249,10 +1250,49 @@ document.getElementById('refreshSuggestions').addEventListener('click', function
 // ═══════════════════════════════════════
 // IPFS RESOLUTION
 // ═══════════════════════════════════════
+const IPFS_GATEWAYS = [
+  'https://ipfs.io/ipfs/',
+  'https://nftstorage.link/ipfs/',
+  'https://w3s.link/ipfs/',
+  'https://gateway.pinata.cloud/ipfs/',
+];
+const IPFS_GATEWAY = IPFS_GATEWAYS[0];
+
+// Fallback: try alternative IPFS gateways on image load error
+function handleImgError(img) {
+  const src = img.src || '';
+  // Extract CID from current URL
+  const cidMatch = src.match(/\/ipfs\/(baf[yk][a-z2-7]{50,}|Qm[a-zA-Z0-9]{44,})/);
+  if (cidMatch) {
+    const cid = cidMatch[1];
+    const currentGw = IPFS_GATEWAYS.findIndex(gw => src.startsWith(gw));
+    const nextGw = currentGw + 1;
+    if (nextGw < IPFS_GATEWAYS.length) {
+      img.src = IPFS_GATEWAYS[nextGw] + cid;
+      return;
+    }
+  }
+  // Try the full-res URL as last resort
+  const fullUrl = img.dataset.full;
+  if (fullUrl && fullUrl !== src && fullUrl !== img.getAttribute('data-tried')) {
+    img.setAttribute('data-tried', fullUrl);
+    img.src = fullUrl;
+    return;
+  }
+  // All fallbacks failed — hide
+  img.parentElement.style.display = 'none';
+}
+
 function resolveIpfs(uri) {
   if (!uri) return '';
-  if (uri.startsWith('ipfs://')) return 'https://cloudflare-ipfs.com/ipfs/' + uri.slice(7);
+  // Handle ipfs:// protocol
+  if (uri.startsWith('ipfs://')) return IPFS_GATEWAY + uri.slice(7);
+  // Handle bare CIDs (bafyb..., bafkr..., Qm...)
+  if (/^(baf[yk][a-z2-7]{50,}|Qm[a-zA-Z0-9]{44,})/.test(uri)) return IPFS_GATEWAY + uri;
+  // Handle Arweave
   if (uri.startsWith('ar://')) return 'https://arweave.net/' + uri.slice(5);
+  // Handle already-resolved HTTP URLs
+  if (uri.startsWith('http')) return uri;
   return uri;
 }
 
@@ -1553,9 +1593,9 @@ async function searchObjkt(query, offset = 0, limit = 30) {
                 { name: { _ilike: $term } },
                 { description: { _ilike: $term } },
                 { tags: { tag: { name: { _ilike: $term } } } },
-                { fa: { name: { _ilike: $term } } }
+                { fa: { name: { _ilike: $term } } },
+                { creators: { holder: { alias: { _ilike: $term } } } }
               ],
-              mime: { _ilike: "image%" },
               display_uri: { _neq: "" },
               supply: { _gt: "0" },
               flag: { _neq: "banned" }
@@ -2219,38 +2259,40 @@ async function performSearch(query, append = false, noScroll = false) {
 
     // Search both sources in parallel, using multiple terms
     const sourcePromises = [
-      // Ethereum (Alchemy) — search with first 2 terms
+      // Ethereum — Rarible text search + Alchemy curated contracts
       (async () => {
         if (!activeSources.ethereum || !sourceHasMore.ethereum || aiSkipSources.includes('ethereum')) return [];
         try {
-          const terms = append ? [searchTerms[0] || query] : searchTerms.slice(0, 2);
-          const allItems = [];
-          for (const term of terms) {
-            const data = await searchAlchemyNFTs(term, alchemyPageKey);
-            const items = data.results || [];
-            alchemyPageKey = data.nextPageKey;
-            if (!items.length || !alchemyPageKey) sourceHasMore.ethereum = false;
-            allItems.push(...items);
-          }
+          const data = await searchAlchemyNFTs(query, alchemyPageKey);
+          const items = data.results || [];
+          alchemyPageKey = data.nextPageKey;
+          if (!items.length || !alchemyPageKey) sourceHasMore.ethereum = false;
           sourcePage.ethereum++;
-          return allItems.filter(item => { if (seenIds.has(item.id)) return false; seenIds.add(item.id); return true; });
+          return items.filter(item => { if (seenIds.has(item.id)) return false; seenIds.add(item.id); return true; });
         } catch (e) { console.warn('Ethereum search failed:', e); return []; }
       })(),
 
-      // Tezos (OBJKT) — search with multiple terms for broader coverage
+      // Tezos (OBJKT) — primary query with full pagination, supplement with AI terms
       (async () => {
         if (!activeSources.tezos || !sourceHasMore.tezos || aiSkipSources.includes('tezos')) return [];
         try {
-          const terms = append ? [searchTerms[0] || query] : searchTerms.slice(0, 3);
-          const allTokens = [];
-          for (const term of terms) {
-            const perTerm = Math.max(10, Math.floor(30 / terms.length));
-            const data = await searchObjkt(term, append ? tezosOffset : 0, perTerm);
-            allTokens.push(...(data.tokens || []));
+          // Always search with primary query first (full 50 results)
+          const data = await searchObjkt(query, tezosOffset, 50);
+          const allTokens = [...(data.tokens || [])];
+
+          // On first page, also search with AI-decomposed terms for broader coverage
+          if (!append && searchTerms.length > 1) {
+            for (const term of searchTerms.slice(0, 2)) {
+              if (term.toLowerCase() !== query.toLowerCase()) {
+                const extra = await searchObjkt(term, 0, 20);
+                allTokens.push(...(extra.tokens || []));
+              }
+            }
           }
+
           const tokens = allTokens;
-          if (!tokens.length || tokens.length < 10) sourceHasMore.tezos = false;
-          tezosOffset += tokens.length;
+          if (!tokens.length) sourceHasMore.tezos = false;
+          tezosOffset += (data.tokens || []).length; // Only advance offset for primary query
           sourcePage.tezos++;
 
           return tokens.map(token => {
@@ -2263,6 +2305,8 @@ async function performSearch(query, append = false, noScroll = false) {
             const creator = token.creators?.[0]?.holder;
             const collectionName = token.fa?.name || '';
             const collectionPath = token.fa?.path || `${token.fa_contract}`;
+            const mime = token.mime || '';
+            const isVideo = mime.startsWith('video/');
             return {
               id,
               title: (token.name || 'Untitled').slice(0, 80),
@@ -2270,8 +2314,11 @@ async function performSearch(query, append = false, noScroll = false) {
               collection: collectionName,
               source: 'Tezos',
               marketplace: 'objkt',
+              mime: mime,
+              isVideo: isVideo,
               imageUrl: image,
-              thumbUrl: thumb,
+              thumbUrl: isVideo ? resolveIpfs(token.thumbnail_uri || token.display_uri) : thumb,
+              videoUrl: isVideo ? resolveIpfs(token.artifact_uri || token.display_uri) : null,
               sourceUrl: `https://objkt.com/tokens/${token.fa_contract}/${token.token_id}`,
               collectionUrl: collectionPath ? `https://objkt.com/collection/${collectionPath}` : null,
               tags: (token.tags || []).slice(0, 6).map(t => t.tag?.name).filter(Boolean),
@@ -2364,9 +2411,16 @@ function createMasonryItem(item, delay) {
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z"/></svg>
     </button>
     ${badgeHtml}
-    <img src="${item.thumbUrl || item.imageUrl}" alt="${item.title}" loading="lazy"
-         onerror="this.parentElement.style.display='none'"
-         onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'" />
+    ${item.isVideo
+      ? `<video src="${item.videoUrl || item.imageUrl}" poster="${item.thumbUrl || ''}" muted loop playsinline preload="metadata"
+           onmouseenter="this.play()" onmouseleave="this.pause()"
+           onerror="handleImgError(this)"
+           style="width:100%;display:block"></video>`
+      : `<img src="${item.thumbUrl || item.imageUrl}" alt="${item.title}" loading="lazy"
+           data-full="${item.imageUrl || ''}"
+           onerror="handleImgError(this)"
+           onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'" />`
+    }
     <div class="masonry-overlay">
       <div class="masonry-title">${item.title}</div>
       <div class="masonry-meta">${item.author}${item.collection ? ` &middot; ${item.collection}` : ''} &middot; ${item.source}</div>
@@ -2411,7 +2465,19 @@ window.addEventListener('scroll', () => {
 // ═══════════════════════════════════════
 function openLightbox(item) {
   const lb = document.getElementById('lightbox');
-  document.getElementById('lightboxImg').src = item.imageUrl || item.thumbUrl || '';
+  const lbImg = document.getElementById('lightboxImg');
+  const lbVideo = document.getElementById('lightboxVideo');
+  if (item.isVideo && item.videoUrl) {
+    lbImg.style.display = 'none';
+    lbVideo.style.display = 'block';
+    lbVideo.src = item.videoUrl;
+    lbVideo.play().catch(() => {});
+  } else {
+    lbVideo.style.display = 'none';
+    lbVideo.src = '';
+    lbImg.style.display = 'block';
+    lbImg.src = item.imageUrl || item.thumbUrl || '';
+  }
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
   document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
   document.getElementById('lightboxDesc').textContent = '';
@@ -2427,6 +2493,7 @@ function openLightbox(item) {
 document.getElementById('lightboxClose').addEventListener('click', () => {
   document.getElementById('lightbox').classList.remove('visible');
   document.body.style.overflow = '';
+  const v = document.getElementById('lightboxVideo'); v.pause(); v.src = '';
 });
 document.getElementById('lightbox').addEventListener('click', (e) => {
   if (e.target === e.currentTarget) {
