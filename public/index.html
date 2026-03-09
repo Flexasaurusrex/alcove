@@ -1262,83 +1262,75 @@ function resolveIpfs(uri) {
 const ALCHEMY_API_KEY = 'wYIXwquDLhlAduUGwL3oI';
 const ALCHEMY_BASE = `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
 
-async function searchAlchemy(query, pageKey = null) {
-  try {
-    const params = new URLSearchParams({
-      query: query,
-      limit: '30',
-    });
-    if (pageKey) params.set('pageKey', pageKey);
+// Cache contract search results to avoid re-fetching on pagination
+let alchemyContractCache = [];
+let alchemyContractQuery = '';
+let alchemyContractIdx = 0;
 
-    const url = `${ALCHEMY_BASE}/searchContractMetadata?${params}`;
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      // Fallback: try getNFTsForCollection with a known generative art contract
-      console.warn('Alchemy searchContractMetadata failed, trying text search');
-      return { contracts: [], nextPageKey: null };
-    }
-    return await resp.json();
-  } catch (e) {
-    console.warn('Alchemy API error:', e);
-    return { contracts: [], nextPageKey: null };
-  }
-}
-
-// Search NFTs by metadata text
 async function searchAlchemyNFTs(query, pageKey = null) {
   try {
-    const body = {
-      query: query,
-      limit: 30,
-    };
-    if (pageKey) body.pageKey = pageKey;
+    // Step 1: Find matching contracts (only on first page or new query)
+    if (query !== alchemyContractQuery || !pageKey) {
+      const searchUrl = `${ALCHEMY_BASE}/searchContractMetadata?query=${encodeURIComponent(query)}`;
+      const searchResp = await fetch(searchUrl);
+      if (!searchResp.ok) {
+        console.warn('Alchemy contract search failed:', searchResp.status);
+        return { results: [], nextPageKey: null };
+      }
+      const searchData = await searchResp.json();
+      alchemyContractCache = (searchData.contracts || []).filter(c => c.address);
+      alchemyContractQuery = query;
+      alchemyContractIdx = 0;
+      console.log(`Alchemy: found ${alchemyContractCache.length} contracts for "${query}"`);
+    }
 
-    // Use the v3 search endpoint
-    const resp = await fetch(`${ALCHEMY_BASE}/searchContractMetadata`, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-    });
+    // Step 2: Get NFTs from the next batch of contracts
+    const batchSize = 4;
+    const batch = alchemyContractCache.slice(alchemyContractIdx, alchemyContractIdx + batchSize);
+    if (!batch.length) return { results: [], nextPageKey: null };
+    alchemyContractIdx += batchSize;
+    const hasMoreContracts = alchemyContractIdx < alchemyContractCache.length;
 
-    // Alternative approach: search via getNFTsForOwner won't work for general search
-    // Let's use the Alchemy NFT API search endpoint
-    const searchUrl = `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}/searchContractMetadata?query=${encodeURIComponent(query)}`;
-    const searchResp = await fetch(searchUrl);
-    if (!searchResp.ok) return { contracts: [] };
-    const data = await searchResp.json();
-
-    // For each contract found, get sample NFTs
     const results = [];
-    const contracts = (data.contracts || []).slice(0, 5); // Limit to 5 contracts
-
-    await Promise.all(contracts.map(async (contract) => {
+    await Promise.all(batch.map(async (contract) => {
       try {
-        const nftsUrl = `${ALCHEMY_BASE}/getNFTsForContract?contractAddress=${contract.address}&limit=10&withMetadata=true`;
+        const params = new URLSearchParams({
+          contractAddress: contract.address,
+          limit: '12',
+          withMetadata: 'true',
+        });
+        if (pageKey && contract._pageKey) params.set('startToken', contract._pageKey);
+
+        const nftsUrl = `${ALCHEMY_BASE}/getNFTsForContract?${params}`;
         const nftsResp = await fetch(nftsUrl);
         if (!nftsResp.ok) return;
         const nftsData = await nftsResp.json();
 
+        const collectionName = contract.openSeaMetadata?.collectionName || contract.name || '';
+
         for (const nft of (nftsData.nfts || [])) {
           const image = nft.image?.cachedUrl || nft.image?.thumbnailUrl || resolveIpfs(nft.image?.originalUrl || nft.raw?.metadata?.image || '');
-          const thumb = nft.image?.thumbnailUrl || nft.image?.cachedUrl || image;
-          if (!image) continue;
+          const thumb = nft.image?.thumbnailUrl || nft.image?.pngUrl || nft.image?.cachedUrl || image;
+          if (!image || image.includes('undefined')) continue;
 
           results.push({
             id: `eth_${contract.address}_${nft.tokenId}`,
-            title: (nft.name || nft.raw?.metadata?.name || contract.name || 'Untitled').slice(0, 80),
-            author: contract.name || nft.contract?.name || 'Unknown',
+            title: (nft.name || nft.raw?.metadata?.name || nft.tokenId || 'Untitled').slice(0, 80),
+            author: collectionName || nft.contract?.name || 'Unknown',
+            collection: collectionName,
             source: 'Ethereum',
             marketplace: 'opensea',
             imageUrl: image,
             thumbUrl: thumb,
             sourceUrl: `https://opensea.io/assets/ethereum/${contract.address}/${nft.tokenId}`,
-            tags: [contract.name, 'ERC-721'].filter(Boolean).slice(0, 4),
+            tags: [collectionName, contract.symbol, nft.contract?.tokenType].filter(Boolean).slice(0, 4),
             width: 800, height: 800, color: '#1a1a1a',
           });
         }
       } catch (e) { /* skip failed contract */ }
     }));
 
-    return { results, nextPageKey: data.pageKey || null };
+    return { results, nextPageKey: hasMoreContracts ? 'more' : null };
   } catch (e) {
     console.warn('Alchemy search error:', e);
     return { results: [], nextPageKey: null };
@@ -1348,46 +1340,69 @@ async function searchAlchemyNFTs(query, pageKey = null) {
 // ═══════════════════════════════════════
 // OBJKT API (Tezos)
 // ═══════════════════════════════════════
+
+// Search tokens by name, description, tags, AND collection name
+// Also filter to image-only content for better results
 async function searchObjkt(query, offset = 0, limit = 30) {
   try {
-    const graphqlQuery = {
+    const searchTerm = `%${query}%`;
+
+    // Two parallel searches: direct token match + collection name match
+    const tokenQuery = {
       query: `
-        query SearchTokens($query: String!, $offset: Int!, $limit: Int!) {
+        query SearchTokens($term: String!, $offset: Int!, $limit: Int!) {
           token(
             where: {
               _or: [
-                { name: { _ilike: $query } },
-                { description: { _ilike: $query } },
-                { tags: { tag: { name: { _ilike: $query } } } }
+                { name: { _ilike: $term } },
+                { description: { _ilike: $term } },
+                { tags: { tag: { name: { _ilike: $term } } } },
+                { fa: { name: { _ilike: $term } } }
               ],
-              artifact_uri: { _is_null: false },
-              supply: { _gt: "0" }
+              mime: { _ilike: "image%" },
+              display_uri: { _neq: "" },
+              supply: { _gt: "0" },
+              flag: { _neq: "banned" }
             },
-            order_by: { level: desc },
+            order_by: { pk: desc },
             offset: $offset,
             limit: $limit
           ) {
+            pk
             token_id
             name
             description
+            mime
             artifact_uri
             display_uri
             thumbnail_uri
             fa_contract
-            creator {
-              alias
-              address
+            fa {
+              name
+              collection_id
+              path
+              creator_address
+              floor_price
+              editions
+            }
+            creators {
+              holder {
+                alias
+                address
+              }
             }
             tags {
               tag {
                 name
               }
             }
+            lowest_ask
+            timestamp
           }
         }
       `,
       variables: {
-        query: `%${query}%`,
+        term: searchTerm,
         offset: offset,
         limit: limit,
       }
@@ -1396,23 +1411,27 @@ async function searchObjkt(query, offset = 0, limit = 30) {
     const resp = await fetch('/api/proxy/objkt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(graphqlQuery),
+      body: JSON.stringify(tokenQuery),
     });
 
-    if (!resp.ok) {
+    let tokens = [];
+    if (resp.ok) {
+      const data = await resp.json();
+      tokens = data.data?.token || [];
+    } else {
       // Fallback: try direct
       const directResp = await fetch('https://data.objkt.com/v3/graphql', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(graphqlQuery),
+        body: JSON.stringify(tokenQuery),
       });
-      if (!directResp.ok) return { tokens: [] };
-      const directData = await directResp.json();
-      return { tokens: directData.data?.token || [] };
+      if (directResp.ok) {
+        const directData = await directResp.json();
+        tokens = directData.data?.token || [];
+      }
     }
 
-    const data = await resp.json();
-    return { tokens: data.data?.token || [] };
+    return { tokens };
   } catch (e) {
     console.warn('OBJKT API error:', e);
     return { tokens: [] };
@@ -1998,33 +2017,43 @@ async function performSearch(query, append = false, noScroll = false) {
       }
     }
 
-    // Determine search terms
-    const searchTerms = aiSearchQueries ? aiSearchQueries.slice(0, 3) : [query];
-    const primaryTerm = searchTerms[0] || query;
+    // Determine search terms — use multiple AI terms for broader coverage
+    const searchTerms = aiSearchQueries ? aiSearchQueries.slice(0, 4) : [query];
     const seenIds = new Set(currentResults.map(r => r.id));
 
-    // Search both sources in parallel
+    // Search both sources in parallel, using multiple terms
     const sourcePromises = [
-      // Ethereum (Alchemy)
+      // Ethereum (Alchemy) — search with first 2 terms
       (async () => {
         if (!activeSources.ethereum || !sourceHasMore.ethereum || aiSkipSources.includes('ethereum')) return [];
         try {
-          const data = await searchAlchemyNFTs(primaryTerm, alchemyPageKey);
-          const items = data.results || [];
-          alchemyPageKey = data.nextPageKey;
-          if (!items.length || !alchemyPageKey) sourceHasMore.ethereum = false;
+          const terms = append ? [searchTerms[0] || query] : searchTerms.slice(0, 2);
+          const allItems = [];
+          for (const term of terms) {
+            const data = await searchAlchemyNFTs(term, alchemyPageKey);
+            const items = data.results || [];
+            alchemyPageKey = data.nextPageKey;
+            if (!items.length || !alchemyPageKey) sourceHasMore.ethereum = false;
+            allItems.push(...items);
+          }
           sourcePage.ethereum++;
-          return items.filter(item => !seenIds.has(item.id));
+          return allItems.filter(item => { if (seenIds.has(item.id)) return false; seenIds.add(item.id); return true; });
         } catch (e) { console.warn('Ethereum search failed:', e); return []; }
       })(),
 
-      // Tezos (OBJKT)
+      // Tezos (OBJKT) — search with multiple terms for broader coverage
       (async () => {
         if (!activeSources.tezos || !sourceHasMore.tezos || aiSkipSources.includes('tezos')) return [];
         try {
-          const data = await searchObjkt(primaryTerm, tezosOffset);
-          const tokens = data.tokens || [];
-          if (!tokens.length || tokens.length < 30) sourceHasMore.tezos = false;
+          const terms = append ? [searchTerms[0] || query] : searchTerms.slice(0, 3);
+          const allTokens = [];
+          for (const term of terms) {
+            const perTerm = Math.max(10, Math.floor(30 / terms.length));
+            const data = await searchObjkt(term, append ? tezosOffset : 0, perTerm);
+            allTokens.push(...(data.tokens || []));
+          }
+          const tokens = allTokens;
+          if (!tokens.length || tokens.length < 10) sourceHasMore.tezos = false;
           tezosOffset += tokens.length;
           sourcePage.tezos++;
 
@@ -2035,16 +2064,21 @@ async function performSearch(query, append = false, noScroll = false) {
             const id = `tez_${token.fa_contract}_${token.token_id}`;
             if (seenIds.has(id)) return null;
             seenIds.add(id);
+            const creator = token.creators?.[0]?.holder;
+            const collectionName = token.fa?.name || '';
+            const collectionPath = token.fa?.path || `${token.fa_contract}`;
             return {
               id,
               title: (token.name || 'Untitled').slice(0, 80),
-              author: token.creator?.alias || token.creator?.address?.slice(0, 8) || 'Unknown',
+              author: creator?.alias || creator?.address?.slice(0, 8) || 'Unknown',
+              collection: collectionName,
               source: 'Tezos',
               marketplace: 'objkt',
               imageUrl: image,
               thumbUrl: thumb,
               sourceUrl: `https://objkt.com/tokens/${token.fa_contract}/${token.token_id}`,
-              tags: (token.tags || []).slice(0, 4).map(t => t.tag?.name).filter(Boolean),
+              collectionUrl: collectionPath ? `https://objkt.com/collection/${collectionPath}` : null,
+              tags: (token.tags || []).slice(0, 6).map(t => t.tag?.name).filter(Boolean),
               width: 800, height: 800, color: '#111',
             };
           }).filter(Boolean);
@@ -2139,7 +2173,7 @@ function createMasonryItem(item, delay) {
          onload="if(this.naturalWidth < 50 || this.naturalHeight < 50) this.parentElement.style.display='none'" />
     <div class="masonry-overlay">
       <div class="masonry-title">${item.title}</div>
-      <div class="masonry-meta">${item.author} &middot; ${item.source}</div>
+      <div class="masonry-meta">${item.author}${item.collection ? ` &middot; ${item.collection}` : ''} &middot; ${item.source}</div>
       ${item.tags && item.tags.length > 0 ? `<div class="masonry-tags">${item.tags.map(t => `<span class="masonry-tag">${t}</span>`).join('')}</div>` : ''}
     </div>
   `;
@@ -2183,7 +2217,7 @@ function openLightbox(item) {
   const lb = document.getElementById('lightbox');
   document.getElementById('lightboxImg').src = item.imageUrl || item.thumbUrl || '';
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
-  document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'} · ${item.source || ''}`;
+  document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
   document.getElementById('lightboxDesc').textContent = '';
   document.getElementById('lightboxLink').href = item.sourceUrl || '#';
 
