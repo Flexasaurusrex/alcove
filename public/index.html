@@ -2400,7 +2400,16 @@ function openLightbox(item) {
     lbVideo.style.display = 'none';
     lbVideo.src = '';
     lbImg.style.display = 'block';
-    lbImg.src = item.imageUrl || item.thumbUrl || '';
+    // Show cached thumbnail immediately, then try full-res
+    const thumb = item.thumbUrl || '';
+    const full = item.imageUrl || '';
+    lbImg.src = thumb || full;
+    if (full && full !== thumb) {
+      const hi = new Image();
+      hi.onload = () => { lbImg.src = full; };
+      hi.onerror = () => { /* keep thumbnail */ };
+      hi.src = full;
+    }
   }
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
   document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
