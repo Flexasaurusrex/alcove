@@ -37,7 +37,7 @@
   --font-mono: 'JetBrains Mono', monospace;
 }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: auto; }
 
 body {
   background: var(--bg);
@@ -2125,7 +2125,10 @@ async function performSearch(query, append = false, noScroll = false) {
       }
 
       if (!noScroll) {
-        setTimeout(() => resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+        setTimeout(() => {
+          const y = resultsSection.getBoundingClientRect().top + window.scrollY - 60;
+          window.scrollTo({ top: y, behavior: 'smooth' });
+        }, 100);
       }
 
       // AI decomposition for natural language queries
@@ -2371,7 +2374,13 @@ document.getElementById('navSearchInput')?.addEventListener('keydown', (e) => {
     if (q) {
       document.getElementById('searchInput').value = q;
       performSearch(q);
-      setTimeout(() => document.getElementById('resultsSection')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 150);
+      setTimeout(() => {
+          const rs = document.getElementById('resultsSection');
+          if (rs) {
+            const y = rs.getBoundingClientRect().top + window.scrollY - 60;
+            window.scrollTo({ top: y, behavior: 'smooth' });
+          }
+        }, 150);
     }
   }
 });
