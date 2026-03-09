@@ -1257,84 +1257,280 @@ function resolveIpfs(uri) {
 }
 
 // ═══════════════════════════════════════
-// ALCHEMY API (Ethereum)
+// ETHEREUM SEARCH (Multi-strategy)
 // ═══════════════════════════════════════
+// Strategy: Rarible text search (primary) + Alchemy curated contracts (fallback)
+
 const ALCHEMY_API_KEY = 'wYIXwquDLhlAduUGwL3oI';
 const ALCHEMY_BASE = `https://eth-mainnet.g.alchemy.com/nft/v3/${ALCHEMY_API_KEY}`;
 
-// Cache contract search results to avoid re-fetching on pagination
+// Known high-quality art platform contracts on Ethereum
+const ART_CONTRACTS = [
+  { address: '0xa7d8d9ef8D8Ce8992Df33D8b8CF4Adecd1A0Fd9', name: 'Art Blocks Curated' },
+  { address: '0x99a9B7c1116f9ceEB1652de04d5969CcE509B069', name: 'Art Blocks Explorations' },
+  { address: '0xb932a70A57673d89f4acfFBE830E8ed7f75Fb9e0', name: 'SuperRare' },
+  { address: '0x3B3ee1931Dc30C1957379FAc9aba94D1C48a5405', name: 'Foundation' },
+  { address: '0xFBeef911Dc5821886e1dda71586d90ed28174B7d', name: 'KnownOrigin' },
+  { address: '0xb6dAe651468E9593E4581705a09c10A76AC1e0c8', name: 'Async Art' },
+  { address: '0xa319C382a702682129fcbF55d514E61a16f97f9c', name: 'Art Blocks Engine' },
+  { address: '0x059EDD72Cd353dF5106D2B9cC5ab83a52287aC3a', name: 'Art Blocks (Legacy)' },
+  { address: '0x46ac8540d698167FCbb108DEDE56c63e87A3A6f4', name: 'Bright Moments' },
+  { address: '0xd4e4078ca3495DE5B1d4dB434BEbc5a986197782', name: 'Autoglyphs' },
+  { address: '0x7Bd29408f11D2bFC23c34f18275bBafC5309e0B1', name: 'Meebits' },
+  { address: '0xC73B17179Bf0C59cD5860Bb25247D1D1092c1088', name: 'Feral File' },
+  { address: '0x8d04a8c79cEB0889Bdd12acdF3Fa9D207eD3Ff63', name: 'Blitmap' },
+];
+
+// PFP/spam detection
+const SPAM_PATTERNS = /\b(ape|punk|bored|doodle|azuki|pfp|club|gang|crew|squad|degen|degenz|chimp|monkey|kitten|kitty|toad|frog|goblin|skeleton|zombie|mutant|clone|baby|mini|cute|chibi|shib|pepe|wojak|chad|anime|waifu|hentai|neko|inu|floki|elon|moon|diamond|hands|wagmi|ngmi|hodl|yacht|bayc|mayc|beanz|land|pass|ticket|loot|key|access|membership|mint pass|whitelist|allowlist|free mint)\b/i;
+
+// Deduplicate by image URL to prevent visual duplicates
+const seenImageUrls = new Set();
+
+function isLikelyArt(contract) {
+  if (!contract) return false;
+  // Known art platform
+  if (ART_CONTRACTS.some(ac => ac.address.toLowerCase() === contract.address?.toLowerCase())) return true;
+  // Spam flagged
+  if (contract.isSpam) return false;
+  // High supply = PFPs (real art collections rarely exceed 500)
+  const supply = parseInt(contract.totalSupply || '0');
+  if (supply > 500) return false;
+  // Name matches spam patterns
+  const name = (contract.openSeaMetadata?.collectionName || contract.name || '');
+  if (SPAM_PATTERNS.test(name)) return false;
+  // Require a meaningful description (real art has descriptions)
+  const desc = contract.openSeaMetadata?.description || '';
+  if (desc.length < 20 && supply > 100) return false;
+  return true;
+}
+
+function isLikelyArtNFT(nft) {
+  const name = (nft.name || nft.raw?.metadata?.name || '').trim();
+  // Just a number = auto-generated PFP
+  if (/^#?\d+$/.test(name)) return false;
+  // Has actual image
+  const image = nft.image?.cachedUrl || nft.image?.thumbnailUrl || nft.image?.originalUrl || nft.raw?.metadata?.image;
+  if (!image) return false;
+  // Skip if we've seen this exact image
+  const imgUrl = (nft.image?.thumbnailUrl || nft.image?.cachedUrl || '').split('?')[0];
+  if (imgUrl && seenImageUrls.has(imgUrl)) return false;
+  if (imgUrl) seenImageUrls.add(imgUrl);
+  return true;
+}
+
+function normalizeEthNFT(nft, contractInfo) {
+  const image = nft.image?.cachedUrl || nft.image?.thumbnailUrl || resolveIpfs(nft.image?.originalUrl || nft.raw?.metadata?.image || '');
+  const thumb = nft.image?.thumbnailUrl || nft.image?.pngUrl || nft.image?.cachedUrl || image;
+  if (!image || image.includes('undefined')) return null;
+
+  const nftName = nft.name || nft.raw?.metadata?.name || '';
+  const collectionName = contractInfo?.name || nft.contract?.openSeaMetadata?.collectionName || nft.contract?.name || '';
+  const contractAddr = nft.contract?.address || contractInfo?.address || '';
+  const desc = nft.description || nft.raw?.metadata?.description || '';
+
+  return {
+    id: `eth_${contractAddr}_${nft.tokenId}`,
+    title: (nftName || collectionName + ' #' + nft.tokenId || 'Untitled').slice(0, 80),
+    author: nft.raw?.metadata?.artist || nft.raw?.metadata?.creator || collectionName || 'Unknown',
+    collection: collectionName,
+    description: desc.slice(0, 200),
+    source: 'Ethereum',
+    marketplace: 'opensea',
+    imageUrl: image,
+    thumbUrl: thumb,
+    sourceUrl: `https://opensea.io/assets/ethereum/${contractAddr}/${nft.tokenId}`,
+    tags: [collectionName, nft.contract?.symbol].filter(Boolean).slice(0, 4),
+    width: 800, height: 800, color: '#1a1a1a',
+  };
+}
+
+// ---- Strategy A: Rarible text search (best quality) ----
+let raribleContinuation = null;
+let raribleLastQuery = '';
+
+async function searchRarible(query, continuation = null) {
+  try {
+    const body = {
+      size: 20,
+      filter: {
+        '@type': 'by_trait',
+        blockchains: ['ETHEREUM'],
+      },
+      text: query,
+    };
+    if (continuation) body.continuation = continuation;
+
+    const resp = await fetch('/api/proxy/rarible', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '/items/search', body }),
+    });
+
+    if (!resp.ok) {
+      console.warn('Rarible search failed:', resp.status);
+      return { items: [], continuation: null };
+    }
+
+    const data = await resp.json();
+    return {
+      items: (data.items || []).filter(item => {
+        // Filter out PFPs from Rarible results too
+        const name = (item.meta?.name || '').toLowerCase();
+        const collName = (item.collection?.name || item.meta?.content?.[0]?.fileName || '').toLowerCase();
+        if (SPAM_PATTERNS.test(name) || SPAM_PATTERNS.test(collName)) return false;
+        if (/^#?\d+$/.test(name.trim())) return false;
+        return true;
+      }),
+      continuation: data.continuation || null,
+    };
+  } catch (e) {
+    console.warn('Rarible search error:', e);
+    return { items: [], continuation: null };
+  }
+}
+
+function normalizeRaribleItem(item) {
+  const meta = item.meta || {};
+  const content = meta.content || [];
+  const image = content.find(c => c['@type'] === 'IMAGE');
+  const imageUrl = image?.url || content[0]?.url || '';
+  if (!imageUrl) return null;
+
+  // Extract blockchain and contract info from item.id (format: "ETHEREUM:0x....:tokenId")
+  const [chain, contractTokenId] = (item.id || '').split(':').slice(0, 2);
+  const parts = (item.id || '').split(':');
+  const contractAddr = parts[1] || '';
+  const tokenId = parts[2] || '';
+
+  const thumbUrl = image?.url ? image.url.replace('/original/', '/preview/') : imageUrl;
+
+  return {
+    id: `eth_rarible_${contractAddr}_${tokenId}`,
+    title: (meta.name || 'Untitled').slice(0, 80),
+    author: item.creators?.[0]?.account?.replace('ETHEREUM:', '') || 'Unknown',
+    collection: item.collection || '',
+    source: 'Ethereum',
+    marketplace: 'opensea',
+    imageUrl: imageUrl,
+    thumbUrl: thumbUrl,
+    sourceUrl: `https://opensea.io/assets/ethereum/${contractAddr}/${tokenId}`,
+    tags: (meta.tags || []).slice(0, 4),
+    width: 800, height: 800, color: '#1a1a1a',
+  };
+}
+
+// ---- Strategy B: Alchemy curated contracts (fallback) ----
 let alchemyContractCache = [];
 let alchemyContractQuery = '';
 let alchemyContractIdx = 0;
 
-async function searchAlchemyNFTs(query, pageKey = null) {
+async function searchAlchemyCurated(query, pageKey = null) {
   try {
-    // Step 1: Find matching contracts (only on first page or new query)
+    // Also try searchContractMetadata but with VERY aggressive filtering
     if (query !== alchemyContractQuery || !pageKey) {
       const searchUrl = `${ALCHEMY_BASE}/searchContractMetadata?query=${encodeURIComponent(query)}`;
       const searchResp = await fetch(searchUrl);
-      if (!searchResp.ok) {
-        console.warn('Alchemy contract search failed:', searchResp.status);
-        return { results: [], nextPageKey: null };
+      let discoveredContracts = [];
+      if (searchResp.ok) {
+        const searchData = await searchResp.json();
+        discoveredContracts = (searchData.contracts || [])
+          .filter(c => c.address && isLikelyArt(c));
       }
-      const searchData = await searchResp.json();
-      alchemyContractCache = (searchData.contracts || []).filter(c => c.address);
+
+      // Combine with curated art contracts
+      const allContracts = [...discoveredContracts];
+      // Add curated contracts if we haven't searched them yet
+      if (!pageKey) {
+        for (const ac of ART_CONTRACTS) {
+          if (!allContracts.some(c => c.address?.toLowerCase() === ac.address.toLowerCase())) {
+            allContracts.push({ address: ac.address, name: ac.name, openSeaMetadata: { collectionName: ac.name } });
+          }
+        }
+      }
+
+      alchemyContractCache = allContracts;
       alchemyContractQuery = query;
       alchemyContractIdx = 0;
-      console.log(`Alchemy: found ${alchemyContractCache.length} contracts for "${query}"`);
+      console.log(`Alchemy: ${discoveredContracts.length} discovered + ${ART_CONTRACTS.length} curated contracts for "${query}"`);
     }
 
-    // Step 2: Get NFTs from the next batch of contracts
-    const batchSize = 4;
+    // Get NFTs from the next batch of contracts
+    const batchSize = 3;
     const batch = alchemyContractCache.slice(alchemyContractIdx, alchemyContractIdx + batchSize);
     if (!batch.length) return { results: [], nextPageKey: null };
     alchemyContractIdx += batchSize;
-    const hasMoreContracts = alchemyContractIdx < alchemyContractCache.length;
+    const hasMore = alchemyContractIdx < alchemyContractCache.length;
 
     const results = [];
+    const queryWords = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
     await Promise.all(batch.map(async (contract) => {
       try {
         const params = new URLSearchParams({
           contractAddress: contract.address,
-          limit: '12',
+          limit: '20',
           withMetadata: 'true',
         });
-        if (pageKey && contract._pageKey) params.set('startToken', contract._pageKey);
 
-        const nftsUrl = `${ALCHEMY_BASE}/getNFTsForContract?${params}`;
-        const nftsResp = await fetch(nftsUrl);
+        const nftsResp = await fetch(`${ALCHEMY_BASE}/getNFTsForContract?${params}`);
         if (!nftsResp.ok) return;
         const nftsData = await nftsResp.json();
 
-        const collectionName = contract.openSeaMetadata?.collectionName || contract.name || '';
-
         for (const nft of (nftsData.nfts || [])) {
-          const image = nft.image?.cachedUrl || nft.image?.thumbnailUrl || resolveIpfs(nft.image?.originalUrl || nft.raw?.metadata?.image || '');
-          const thumb = nft.image?.thumbnailUrl || nft.image?.pngUrl || nft.image?.cachedUrl || image;
-          if (!image || image.includes('undefined')) continue;
+          if (!isLikelyArtNFT(nft)) continue;
 
-          results.push({
-            id: `eth_${contract.address}_${nft.tokenId}`,
-            title: (nft.name || nft.raw?.metadata?.name || nft.tokenId || 'Untitled').slice(0, 80),
-            author: collectionName || nft.contract?.name || 'Unknown',
-            collection: collectionName,
-            source: 'Ethereum',
-            marketplace: 'opensea',
-            imageUrl: image,
-            thumbUrl: thumb,
-            sourceUrl: `https://opensea.io/assets/ethereum/${contract.address}/${nft.tokenId}`,
-            tags: [collectionName, contract.symbol, nft.contract?.tokenType].filter(Boolean).slice(0, 4),
-            width: 800, height: 800, color: '#1a1a1a',
-          });
+          // For curated contracts, do client-side text matching
+          const nftText = [
+            nft.name, nft.raw?.metadata?.name, nft.description,
+            nft.raw?.metadata?.description, contract.name
+          ].filter(Boolean).join(' ').toLowerCase();
+
+          // At least one query word should match (relaxed for curated contracts)
+          const isFromCurated = ART_CONTRACTS.some(ac => ac.address.toLowerCase() === contract.address?.toLowerCase());
+          if (!isFromCurated && queryWords.length > 0 && !queryWords.some(w => nftText.includes(w))) continue;
+
+          const normalized = normalizeEthNFT(nft, { address: contract.address, name: contract.openSeaMetadata?.collectionName || contract.name || '' });
+          if (normalized) results.push(normalized);
         }
-      } catch (e) { /* skip failed contract */ }
+      } catch (e) { /* skip */ }
     }));
 
-    return { results, nextPageKey: hasMoreContracts ? 'more' : null };
+    return { results, nextPageKey: hasMore ? 'more' : null };
   } catch (e) {
-    console.warn('Alchemy search error:', e);
+    console.warn('Alchemy curated search error:', e);
     return { results: [], nextPageKey: null };
   }
+}
+
+// ---- Combined Ethereum search ----
+async function searchAlchemyNFTs(query, pageKey = null) {
+  // Reset image dedup on new query
+  if (query !== alchemyContractQuery) seenImageUrls.clear();
+
+  // Try Rarible first (real text search), fall back to Alchemy curated
+  const [raribleData, alchemyData] = await Promise.all([
+    searchRarible(query, pageKey === 'more' ? raribleContinuation : null),
+    searchAlchemyCurated(query, pageKey),
+  ]);
+
+  // Normalize Rarible results
+  const raribleResults = raribleData.items.map(normalizeRaribleItem).filter(Boolean);
+  raribleContinuation = raribleData.continuation;
+
+  // Merge and deduplicate
+  const allResults = [...raribleResults, ...(alchemyData.results || [])];
+  const seen = new Set();
+  const deduped = allResults.filter(r => {
+    const key = r.thumbUrl?.split('?')[0] || r.id;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const hasMore = raribleContinuation || alchemyData.nextPageKey;
+  console.log(`ETH search: ${raribleResults.length} Rarible + ${alchemyData.results?.length || 0} Alchemy = ${deduped.length} unique`);
+  return { results: deduped, nextPageKey: hasMore ? 'more' : null };
 }
 
 // ═══════════════════════════════════════

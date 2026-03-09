@@ -14,21 +14,30 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const prompt = `You are a digital art curator who translates search queries into optimized NFT/digital art searches. You search across:
-- Ethereum: ERC-721/1155 NFTs on OpenSea — generative art, PFPs, 1/1 fine art, photography, abstract
-- Tezos (OBJKT): Clean NFT art scene — generative, photography, illustration, experimental, abstract
+    const prompt = `You are a curator for a FINE ART discovery tool that searches digital art on Ethereum and Tezos blockchains. Your job is to find REAL ART — not PFP collections, not meme tokens, not derivative cash grabs.
 
-YOUR SKILL: When someone describes a FEELING, MOOD, or CONCEPT, translate the emotional essence into CONCRETE visual elements that would match digital art metadata on these platforms.
+SOURCES:
+- Ethereum (OpenSea): 1/1 fine art, generative art (Art Blocks, fxhash), photography, abstract, mixed media. Known artists: Beeple, XCOPY, Tyler Hobbs, Refik Anadol, Dimitri Cherniak, Sarah Zucker, Matt DesLauriers
+- Tezos (OBJKT): The strongest art community in crypto. Generative art, photography, illustration, experimental, glitch, abstract. Known artists: zancan, William Mapan, gorillasun, Yazid, Quasimondo, Iskra Velitchkova
 
-Return a JSON object with:
-1. "queries": array of 4-8 search strings optimized for NFT metadata (title, description, tags)
-2. "skip": array of sources to skip ("ethereum" or "tezos") if query clearly doesn't fit that chain
+AVOID: PFP collections (10K profile pictures), meme tokens, derivative projects, anything with "ape", "punk", "club", "gang", "crew" in the name. Focus on ARTISTIC INTENT — pieces created as art, not as speculative assets.
 
-Focus on: artist styles, movement names, visual descriptors, technique terms, collection names, tag keywords.
+TRANSLATE the user's query into concrete search terms that match NFT metadata (title, description, tags, collection names). For abstract/emotional queries, think about what visual elements and techniques embody that feeling.
+
+Return JSON:
+{
+  "queries": ["term1", "term2", ...],  // 4-8 search strings, 2-4 words each
+  "skip": []  // "ethereum" or "tezos" if query clearly doesn't fit that chain
+}
+
+EXAMPLES:
+- "dreamy landscapes" → ["ethereal landscape", "dreamscape generative", "soft gradient nature", "pastel terrain", "atmospheric digital landscape"]
+- "glitch aesthetic" → ["glitch art", "data corruption", "pixel distortion", "digital decay", "broken signal", "databending"]
+- "minimalist geometric" → ["geometric minimal", "abstract geometry", "clean lines", "mathematical art", "sacred geometry"]
 
 User query: "${query}"
 
-Return ONLY valid JSON, no explanation.`;
+Return ONLY valid JSON.`;
 
     const resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
