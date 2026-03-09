@@ -2355,7 +2355,11 @@ function createMasonryItem(item, delay) {
   const pinBtn = el.querySelector('.pin-btn');
   pinBtn.addEventListener('click', (e) => { e.stopPropagation(); pinImageToBoard(item, pinBtn, e); });
   el.addEventListener('dblclick', (e) => { e.preventDefault(); e.stopPropagation(); pinImageToBoard(item, pinBtn, e); });
-  el.addEventListener('click', () => openLightbox(item));
+  el.addEventListener('click', () => {
+    const renderedImg = el.querySelector('img, video');
+    const workingSrc = renderedImg ? renderedImg.src : '';
+    openLightbox(item, workingSrc);
+  });
 
   const aspectRatio = (item.height && item.width) ? item.height / item.width : 1;
   return { el, estimatedHeight: 300 * aspectRatio };
@@ -2387,29 +2391,20 @@ window.addEventListener('scroll', () => {
 // ═══════════════════════════════════════
 // LIGHTBOX
 // ═══════════════════════════════════════
-function openLightbox(item) {
+function openLightbox(item, workingSrc) {
   const lb = document.getElementById('lightbox');
   const lbImg = document.getElementById('lightboxImg');
   const lbVideo = document.getElementById('lightboxVideo');
   if (item.isVideo && item.videoUrl) {
     lbImg.style.display = 'none';
     lbVideo.style.display = 'block';
-    lbVideo.src = item.videoUrl;
+    lbVideo.src = workingSrc || item.videoUrl;
     lbVideo.play().catch(() => {});
   } else {
     lbVideo.style.display = 'none';
     lbVideo.src = '';
     lbImg.style.display = 'block';
-    // Show cached thumbnail immediately, then try full-res
-    const thumb = item.thumbUrl || '';
-    const full = item.imageUrl || '';
-    lbImg.src = thumb || full;
-    if (full && full !== thumb) {
-      const hi = new Image();
-      hi.onload = () => { lbImg.src = full; };
-      hi.onerror = () => { /* keep thumbnail */ };
-      hi.src = full;
-    }
+    lbImg.src = workingSrc || item.thumbUrl || item.imageUrl || '';
   }
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
   document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
