@@ -47,6 +47,7 @@ Return ONLY valid JSON.`;
       body: JSON.stringify({
         // Short structured task: Haiku is fast and cheap. (claude-sonnet-4-20250514 was retired, 404.)
         model: 'claude-haiku-5-5',
+        thinking: { type: 'disabled' }, // short JSON task; keeps search snappy
         max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -59,7 +60,7 @@ Return ONLY valid JSON.`;
     }
 
     const data = await resp.json();
-    const text = data.content?.[0]?.text || '';
+    const text = (data.content || []).find(b => b.type === 'text')?.text || '';
 
     // Parse JSON from response
     const jsonMatch = text.match(/\{[\s\S]*\}/);

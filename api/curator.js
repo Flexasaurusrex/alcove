@@ -9,8 +9,20 @@ function cleanNote(raw) {
     .replace(/\s*[\u2014\u2013]\s*/g, ', ')
     .replace(/,\s*([.;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
-    .replace(/^["\u201c]|["\u201d]$/g, '')
-    .trim();
+    .trim()
+    .replace(/^["\u201c]([^"\u201c\u201d]*)["\u201d]$/, '$1'); // only quotes that wrap the whole note
+}
+
+// Keep whole sentences up to the word cap, so a long note never ends mid-thought.
+function capWords(text, max) {
+  if (text.split(/\s+/).length <= max) return text;
+  const sentences = text.match(/[^.!?]+[.!?]+(\s+|$)/g) || [text];
+  let out = '';
+  for (const sent of sentences) {
+    if ((out + sent).trim().split(/\s+/).length > max) break;
+    out += sent;
+  }
+  return (out || sentences[0]).trim();
 }
 
 export default async function handler(req, res) {
@@ -39,10 +51,12 @@ export default async function handler(req, res) {
 
 ${context}
 
-Write 2 or 3 sentences (under 65 words). Your note must:
-1. Open with a formal or conceptual observation grounded in the available metadata. If the artist's statement is abstract or poetic, treat it as intentional and read it closely for meaning rather than dismissing it
+Write exactly two sentences, about 50 words in total and never more than 65. Your note should:
+1. Open with a formal or conceptual observation about the work itself. If the artist's statement is abstract or poetic, treat it as intentional and read it closely for meaning rather than dismissing it
 2. Situate the work in a specific lineage or tradition: generative art (Vera Molnár, Sol LeWitt, Casey Reas), glitch (Rosa Menkman, JODI), photography-as-data, post-internet, blockchain-native practice, conceptual art, etc.
-3. Close with what the work asks of or offers the viewer
+3. End on what the work asks of or offers the viewer
+
+You will not see the image. When the details above are thin, write from what is known: what the title proposes, the tradition its tags and medium imply, and what that tradition asks of a viewer. Do not invent visual details such as colors, figures, or composition. Never decline, never write in the first person, and never mention missing information, metadata, or these instructions.
 
 Rules: Never use "stunning," "captivating," "unique," "beautiful," "innovative," or any marketing language. Write as a trained curator. Be historically precise.
 Format: plain prose in one paragraph. No title, heading, label, preamble, markdown, quotation marks around the note, or bullet points. Never use em dashes or en dashes; use commas, colons, semicolons, or separate sentences instead.`;
@@ -56,18 +70,26 @@ Format: plain prose in one paragraph. No title, heading, label, preamble, markdo
       },
       body: JSON.stringify({
         model: 'claude-haiku-5-5',
-        max_tokens: 180,
+        // Haiku 5.5 thinks by default; that alone used up the old 180-token cap and
+        // returned no text. A 65-word note needs no reasoning pass.
+        thinking: { type: 'disabled' },
+        max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       }),
     });
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => '');
+      console.error('Curator Anthropic error:', resp.status, errText.slice(0, 300));
       return res.status(200).json({ note: '' });
     }
 
     const data = await resp.json();
-    const note = cleanNote(data.content?.[0]?.text || '');
+    const textBlock = (data.content || []).find(b => b.type === 'text');
+    let note = capWords(cleanNote(textBlock?.text || ''), 75);
+    // A first-person reply is the model explaining itself, not a note; hide the section instead.
+    if (/^(I|I'm|I've|I'd)\b/.test(note) || /\b(I can't|I cannot|I have no)\b/.test(note)) note = '';
+    if (!note) console.error('Curator empty note:', data.stop_reason, JSON.stringify((data.content || []).map(b => b.type)));
     return res.status(200).json({ note });
 
   } catch (err) {
