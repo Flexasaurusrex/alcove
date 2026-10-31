@@ -3516,7 +3516,7 @@ async function renderCharts() {
     openLightbox(item, row.querySelector('img')?.src);
   }));
   body.querySelectorAll('[data-collector]').forEach(row => row.addEventListener('click', () => {
-    window.open(`https://objkt.com/profile/${row.dataset.collector}/collection`, '_blank', 'noopener');
+    window.open(`https://objkt.com/profile/${row.dataset.collector}/owned`, '_blank', 'noopener');
   }));
 }
 
