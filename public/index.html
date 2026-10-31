@@ -7,7 +7,7 @@
 <meta name="description" content="Discover the story of digital art on Tezos. Search generative art, photography, illustration, and more on OBJKT.">
 <meta property="og:title" content="Alcove — Discover the story of digital art">
 <meta property="og:description" content="Discover the story of digital art on Tezos.">
-<meta property="og:url" content="https://alcove.art">
+<meta property="og:url" content="https://thealcove.art">
 <meta property="og:type" content="website">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -15,10 +15,10 @@
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
 <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
 <meta name="theme-color" content="#0a0a0a">
-<meta property="og:image" content="https://alcove.art/og-image.png">
+<meta property="og:image" content="https://thealcove.art/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
-<meta name="twitter:image" content="https://alcove.art/og-image.png">
+<meta name="twitter:image" content="https://thealcove.art/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://ipfs.io" crossorigin>
 <link rel="preconnect" href="https://gateway.pinata.cloud" crossorigin>
@@ -284,7 +284,7 @@ a { color: inherit; text-decoration: none; }
   background: transparent; border: none; outline: none;
   letter-spacing: .01em;
 }
-.search-input::placeholder { color: var(--text-tertiary); }
+.search-input::placeholder { color: var(--text-tertiary); font-size: 12px; letter-spacing: .02em; }
 .search-btn {
   width: 40px; height: 40px; border-radius: 12px;
   background: rgba(196,168,130,.15); border: 1px solid rgba(196,168,130,.3); cursor: pointer;
@@ -567,13 +567,13 @@ a { color: inherit; text-decoration: none; }
 .lightbox-close:hover { background: rgba(255,255,255,.15); }
 .lightbox-content {
   max-width: 90vw; max-height: 80vh;
-  display: flex; gap: 40px; align-items: flex-start;
+  display: flex; gap: 40px; align-items: center;
 }
 .lightbox-img {
   max-width: 65vw; max-height: 80vh;
   object-fit: contain; border-radius: 8px;
 }
-.lightbox-info { min-width: 250px; max-width: 300px; }
+.lightbox-info { min-width: 250px; max-width: 300px; max-height: 80vh; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(196,168,130,.2) transparent; }
 .lightbox-title {
   font-family: var(--font-display);
   font-size: 20px; font-weight: 500; color: var(--cream);
@@ -934,6 +934,34 @@ footer {
 .nav-board-dot { width: 6px; height: 6px; border-radius: 50%; background: rgba(196,168,130,.5); }
 
 /* ═══════════════════════════════════════
+   CURATOR'S NOTE
+   ═══════════════════════════════════════ */
+.lightbox-curator {
+  margin-top: 24px; padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+.lightbox-curator-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--warm); margin-bottom: 10px;
+}
+.lightbox-curator-text {
+  font-size: 13px; line-height: 1.8;
+  color: rgba(255,255,255,.6);
+  font-style: italic;
+}
+.curator-loading {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--warm);
+  animation: curatorPulse 1.6s ease-in-out infinite;
+}
+@keyframes curatorPulse {
+  0%, 100% { opacity: .3; }
+  50% { opacity: 1; }
+}
+
+/* ═══════════════════════════════════════
    ANIMATIONS
    ═══════════════════════════════════════ */
 @keyframes fadeUp {
@@ -1030,7 +1058,7 @@ footer {
       <div class="search-container">
       <div class="search-bar" id="searchBar">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
-        <input type="text" class="search-input" id="searchInput" placeholder="Describe what you're looking for..." />
+        <input type="text" class="search-input" id="searchInput" placeholder="Describe what you're looking for... try noir+photography" />
         <button class="search-btn" id="searchBtn">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
         </button>
@@ -1093,6 +1121,10 @@ footer {
       <a class="lightbox-source-link" id="lightboxLink" href="#" target="_blank">
         View on marketplace &rarr;
       </a>
+      <div class="lightbox-curator" id="lightboxCurator" style="display:none">
+        <div class="lightbox-curator-eyebrow">Curator's Note</div>
+        <div class="lightbox-curator-text" id="lightboxCuratorText"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -2157,6 +2189,7 @@ function normalizeToken(token) {
   return {
     id: `tez_${token.fa_contract}_${token.token_id}`,
     title: (token.name || 'Untitled').slice(0, 80),
+    description: (token.description || '').slice(0, 400),
     author: creator?.alias || creator?.address?.slice(0, 8) || 'Unknown',
     collection: collectionName,
     source: 'Tezos',
@@ -2193,7 +2226,9 @@ async function performSearch(query, append = false, noScroll = false) {
       currentResults = [];
       tezosOffset = 0;
       resultsSection.classList.add('visible');
-      resultsQuery.textContent = `"${query}"`;
+      resultsQuery.textContent = query.includes('+')
+        ? query.split('+').map(t => t.trim()).filter(Boolean).map(t => `"${t}"`).join(' + ')
+        : `"${query}"`;
       resultsCount.textContent = 'Searching OBJKT...';
       masonryGrid.innerHTML = '';
 
@@ -2218,8 +2253,8 @@ async function performSearch(query, append = false, noScroll = false) {
         }, 100);
       }
 
-      // AI decomposition for natural language queries
-      if (looksLikeNaturalLanguage(query)) {
+      // AI decomposition for natural language queries (skip for + compound searches)
+      if (looksLikeNaturalLanguage(query) && !query.includes('+')) {
         resultsCount.textContent = 'Interpreting your search...';
         const aiResult = await decomposeWithAI(query);
         if (aiResult) {
@@ -2250,17 +2285,35 @@ async function performSearch(query, append = false, noScroll = false) {
 
     if (!tezosHasMore) { isLoading = false; return; }
 
-    // Search OBJKT with primary query
+    // Search OBJKT — parallel for + compound queries, single for everything else
     const seenIds = new Set(currentResults.map(r => r.id));
-    const data = await searchObjkt(query, tezosOffset, 50);
-    let tokens = data.tokens || [];
+    const plusTerms = !append && query.includes('+')
+      ? query.split('+').map(t => t.trim()).filter(Boolean)
+      : null;
 
-    // On first page, also search with AI-decomposed terms
-    if (!append && aiSearchQueries && aiSearchQueries.length > 0) {
-      for (const term of aiSearchQueries.slice(0, 3)) {
-        if (term.toLowerCase() !== query.toLowerCase()) {
-          const extra = await searchObjkt(term, 0, 20);
-          tokens.push(...(extra.tokens || []));
+    let tokens = [];
+    if (plusTerms && plusTerms.length > 1) {
+      // Search each term in parallel, then interleave so all terms appear throughout the grid
+      resultsCount.textContent = `Searching ${plusTerms.join(' + ')}...`;
+      const termResults = await Promise.all(plusTerms.map(t => searchObjkt(t, 0, 30)));
+      const buckets = termResults.map(d => d.tokens || []);
+      const maxLen = Math.max(...buckets.map(b => b.length));
+      for (let i = 0; i < maxLen; i++) {
+        buckets.forEach(b => { if (b[i]) tokens.push(b[i]); });
+      }
+      tezosHasMore = false; // + searches are one-shot, no pagination
+    } else {
+      const data = await searchObjkt(query, tezosOffset, 50);
+      tokens = data.tokens || [];
+      if (!tokens.length) tezosHasMore = false;
+      tezosOffset += tokens.length;
+      // Also search with AI-decomposed terms on first page
+      if (!append && aiSearchQueries?.length) {
+        for (const term of aiSearchQueries.slice(0, 3)) {
+          if (term.toLowerCase() !== query.toLowerCase()) {
+            const extra = await searchObjkt(term, 0, 20);
+            tokens.push(...(extra.tokens || []));
+          }
         }
       }
     }
@@ -2272,9 +2325,6 @@ async function performSearch(query, append = false, noScroll = false) {
       seenIds.add(item.id);
       return true;
     });
-
-    if (!tokens.length) tezosHasMore = false;
-    tezosOffset += (data.tokens || []).length;
 
     // Initialize grid if needed
     if (!append || !COLUMNS.length) initColumns(masonryGrid);
@@ -2407,6 +2457,41 @@ window.addEventListener('scroll', () => {
 });
 
 // ═══════════════════════════════════════
+// CURATOR'S NOTE
+// ═══════════════════════════════════════
+const curatorCache = new Map();
+let lightboxCuratorToken = 0;
+
+function fetchCuratorNote(item) {
+  if (curatorCache.has(item.id)) return Promise.resolve(curatorCache.get(item.id));
+  // Store the promise itself so concurrent calls await the same request
+  const promise = fetch('/api/curator', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      title: item.title,
+      artist: item.author,
+      tags: item.tags,
+      collection: item.collection,
+      description: item.description,
+    }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      const note = data.note || '';
+      curatorCache.set(item.id, note);
+      return note;
+    })
+    .catch(() => {
+      curatorCache.delete(item.id);
+      return '';
+    });
+  curatorCache.set(item.id, promise);
+  return promise;
+}
+
+
+// ═══════════════════════════════════════
 // LIGHTBOX
 // ═══════════════════════════════════════
 function openLightbox(item, workingSrc) {
@@ -2432,11 +2517,39 @@ function openLightbox(item, workingSrc) {
   const tagsEl = document.getElementById('lightboxTags');
   tagsEl.innerHTML = (item.tags || []).map(t => `<span class="masonry-tag">${t}</span>`).join('');
 
+  // Curator's note
+  const curatorSection = document.getElementById('lightboxCurator');
+  const curatorText = document.getElementById('lightboxCuratorText');
+  const lbToken = ++lightboxCuratorToken;
+  if (!item.isVideo) {
+    const cached = curatorCache.get(item.id);
+    if (typeof cached === 'string' && cached) {
+      // Already resolved — show instantly
+      curatorText.textContent = cached;
+      curatorSection.style.display = 'block';
+    } else {
+      // Show shimmer while fetching (handles both cold start and in-flight promise)
+      curatorSection.style.display = 'block';
+      curatorText.innerHTML = `<span class="curator-loading">Composing curator's note...</span>`;
+      fetchCuratorNote(item).then(note => {
+        if (lbToken !== lightboxCuratorToken) return;
+        if (note) {
+          curatorText.textContent = note;
+        } else {
+          curatorSection.style.display = 'none';
+        }
+      });
+    }
+  } else {
+    curatorSection.style.display = 'none';
+  }
+
   lb.classList.add('visible');
   document.body.style.overflow = 'hidden';
 }
 
 document.getElementById('lightboxClose').addEventListener('click', () => {
+  lightboxCuratorToken++;
   document.getElementById('lightbox').classList.remove('visible');
   document.body.style.overflow = '';
   const v = document.getElementById('lightboxVideo'); v.pause(); v.src = '';
