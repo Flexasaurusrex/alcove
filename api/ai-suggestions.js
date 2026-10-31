@@ -4,7 +4,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { query } = req.body;
+    const query = String(req.body?.query || '').trim().slice(0, 300);
     if (!query) {
       return res.status(400).json({ error: 'Missing query' });
     }
@@ -45,7 +45,8 @@ Return ONLY valid JSON.`;
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
+        // Short structured task: Haiku is fast and cheap. (claude-sonnet-4-20250514 was retired, 404.)
+        model: 'claude-haiku-5-5',
         max_tokens: 400,
         messages: [{ role: 'user', content: prompt }],
       }),
@@ -66,8 +67,11 @@ Return ONLY valid JSON.`;
       return res.status(200).json({ queries: [query], skip: [] });
     }
 
-    const parsed = JSON.parse(jsonMatch[0]);
-    return res.status(200).json(parsed);
+    let parsed;
+    try { parsed = JSON.parse(jsonMatch[0]); } catch { parsed = {}; }
+    const queries = (Array.isArray(parsed.queries) ? parsed.queries : [])
+      .map(q => String(q).trim()).filter(Boolean).slice(0, 8);
+    return res.status(200).json({ queries: queries.length ? queries : [query], skip: [] });
   } catch (err) {
     console.error('AI suggestions error:', err);
     return res.status(500).json({ error: 'Internal error' });

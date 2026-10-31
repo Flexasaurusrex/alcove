@@ -1,4 +1,4 @@
-// Alcove charts: Most Popular (7d), Top Artists (30d), Most Sold Pieces (30d),
+// Alcove charts: Most Popular (7d), top 15 Artists (30d), top 15 Most Sold Pieces (30d),
 // Top Collectors (24h). Computed from raw OBJKT sale events, cached at the edge.
 
 const OBJKT = 'https://data.objkt.com/v3/graphql';
@@ -30,7 +30,9 @@ async function gql(query, variables) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, variables }),
       });
-      const j = await r.json();
+      const text = await r.text();
+      let j;
+      try { j = JSON.parse(text); } catch { throw new Error(`OBJKT ${r.status} non-JSON`); }
       if (j.errors) throw new Error(j.errors[0]?.message || 'gql error');
       return j.data;
     } catch (e) {
@@ -61,15 +63,20 @@ async function salesInSlice(from, to) {
   return out;
 }
 
+let failedSlices = 0;
 async function allSales(days) {
+  failedSlices = 0;
   const now = Date.now();
-  const SLICES = 6; // concurrency inside one function, not across scripts
+  const SLICES = 4; // concurrency inside one function, not across scripts
   const step = (days * DAY) / SLICES;
   const parts = await Promise.all(Array.from({ length: SLICES }, (_, i) => {
     const from = new Date(now - days * DAY + i * step).toISOString();
     const to = new Date(i === SLICES - 1 ? now + 60e3 : now - days * DAY + (i + 1) * step).toISOString();
-    return salesInSlice(from, to);
+    // A slice that still fails after retries (OBJKT sometimes answers with an HTML error page)
+    // is dropped instead of sinking the whole build; failures are counted and reported.
+    return salesInSlice(from, to).catch(e => { console.error('charts slice failed:', e.message); failedSlices++; return []; });
   }));
+  if (failedSlices === SLICES) throw new Error('all slices failed');
   const seen = new Set();
   return parts.flat().filter(s => (seen.has(s.id) ? false : seen.add(s.id)));
 }
@@ -126,7 +133,7 @@ async function build() {
   const slim = t => t && ({ ...t, description: (t.description || '').slice(0, 400), tags: (t.tags || []).slice(0, 8) });
   const withToken = list => list.map(r => ({ ...r, token: slim(tokens.get(r.pk)) })).filter(r => okToken(r.token));
 
-  const topArtists = rank(artists30, 'volume', 10);
+  const topArtists = rank(artists30, 'volume', 15);
   const topCollectors = rank(collectors1, 'volume', 15);
   const holders = await hydrateHolders([...topArtists, ...topCollectors].map(r => r.address));
   const withHolder = list => list.map(r => ({ ...r, alias: holders.get(r.address)?.alias || null, logo: holders.get(r.address)?.logo || null }));
@@ -136,8 +143,9 @@ async function build() {
   return {
     generatedAt: new Date(now).toISOString(),
     salesCounted: real.length,
+    partial: failedSlices > 0,
     popular: round(withToken(popRanked).slice(0, 300)),
-    topPieces: round(withToken(piecesRanked).slice(0, 10)),
+    topPieces: round(withToken(piecesRanked).slice(0, 15)),
     topArtists: round(withHolder(topArtists)),
     topCollectors: round(withHolder(topCollectors)),
   };
