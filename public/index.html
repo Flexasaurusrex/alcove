@@ -2833,7 +2833,9 @@ function leaveBrowseMode() {
 
 function scrollToSection(el) {
   setTimeout(() => {
-    const y = el.getBoundingClientRect().top + window.scrollY - 60;
+    // Clear the fixed nav so the Browse bar stays visible.
+    const navH = document.querySelector('.nav')?.offsetHeight || 60;
+    const y = el.getBoundingClientRect().top + window.scrollY - navH - 16;
     window.scrollTo({ top: y, behavior: 'smooth' });
   }, 80);
 }
