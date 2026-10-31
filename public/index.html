@@ -694,6 +694,14 @@ a { color: inherit; text-decoration: none; }
 }
 .collect-btn:hover { background: #d4bb98; }
 .collect-btn:disabled { opacity: .55; cursor: default; }
+.sale-badge {
+  display: inline-block; margin-bottom: 12px;
+  padding: 4px 10px; border-radius: 100px;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-secondary); border: 1px solid rgba(255,255,255,.14);
+}
+.sale-badge.primary { color: var(--warm); border-color: rgba(196,168,130,.5); background: rgba(196,168,130,.08); }
+.lightbox-collect .sale-badge { display: table; }
 .collect-meta {
   font-family: var(--font-mono);
   font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
@@ -3028,7 +3036,7 @@ async function findCollectableListing(item, buyer) {
     query: `query($pk: bigint!, $m: String!) {
       listing_active(where: { token_pk: { _eq: $pk }, marketplace_contract: { _eq: $m }, currency_id: { _eq: 1 }, amount_left: { _gt: 0 } },
         order_by: { price_xtz: asc }, limit: 10
-      ) { bigmap_key price_xtz amount_left seller_address expiry start_time target_address referral_bonus }
+      ) { bigmap_key price_xtz amount_left seller_address expiry start_time target_address referral_bonus token { creators { creator_address } } }
     }`,
     variables: { pk, m: OBJKT_MARKET_V62 },
   });
@@ -3041,6 +3049,12 @@ async function findCollectableListing(item, buyer) {
     (!buyer || l.seller_address !== buyer)
   ) || null;
 }
+
+// Primary = the seller is one of the token's creators (buying straight from the artist).
+const isPrimarySale = (seller, creators) => !!seller && (creators || []).some(c => (c.creator_address || c.holder?.address) === seller);
+const saleBadge = primary => primary
+  ? '<span class="sale-badge primary">Primary · buy from the artist</span>'
+  : '<span class="sale-badge">Secondary · resale from a collector</span>';
 
 const tezStr = mutez => { const v = Number(mutez) / 1e6; return `${v >= 100 ? Math.round(v * 100) / 100 : +v.toFixed(4)} ꜩ`; };
 const shortTz = a => a ? `${a.slice(0, 5)}…${a.slice(-4)}` : '';
@@ -3055,7 +3069,11 @@ async function renderCollect(item) {
   if (myToken !== collectToken) return; // lightbox moved on
   if (!listing) return;
   const left = Number(listing.amount_left);
+  // The badge and button now carry price and sale type, so drop the feed's duplicate line.
+  const desc = document.getElementById('lightboxDesc');
+  if (/Primary|Secondary/.test(desc.textContent)) desc.textContent = '';
   box.innerHTML = `
+    ${saleBadge(isPrimarySale(listing.seller_address, listing.token?.creators))}
     <button class="collect-btn" id="collectBtn">Collect for ${tezStr(listing.price_xtz)}</button>
     <div class="collect-meta">${left} ${left === 1 ? 'edition' : 'editions'} listed · settles on OBJKT</div>
     <div class="collect-status" id="collectStatus"></div>
@@ -3286,7 +3304,7 @@ async function fetchListingsPage() {
       listing_active(
         where: { timestamp: { _lte: $hi, _gt: $lo }, currency_id: { _eq: 1 }, price_xtz: { _gt: 0 } },
         order_by: { timestamp: desc }, limit: 60
-      ) { id timestamp price_xtz token { ${TOKEN_FIELDS} flag supply } }
+      ) { id timestamp price_xtz seller_address token { ${TOKEN_FIELDS} flag supply } }
     }`,
     variables: { hi, lo },
   });
@@ -3299,7 +3317,8 @@ async function fetchListingsPage() {
     const item = normalizeToken(t);
     if (!item || browseSeen.has(item.id)) continue;
     browseSeen.add(item.id);
-    item.stat = `Listed at ${fmtTez(l.price_xtz / 1e6)}`;
+    const primary = isPrimarySale(l.seller_address, t.creators);
+    item.stat = `${fmtTez(l.price_xtz / 1e6)} · ${primary ? 'Primary, from the artist' : 'Secondary'}`;
     items.push(item);
   }
   return { items, more: rows.length === 60 };
