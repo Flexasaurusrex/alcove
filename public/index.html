@@ -681,6 +681,42 @@ a { color: inherit; text-decoration: none; }
   .collected-sparks { display: none; }
 }
 
+/* Artist pages */
+.artist-header {
+  display: flex; gap: 28px; align-items: flex-start;
+  padding: 24px 0 32px; margin-bottom: 8px; border-bottom: 1px solid var(--border);
+}
+.artist-header[hidden] { display: none; }
+.artist-avatar {
+  width: 112px; height: 112px; border-radius: 50%; object-fit: cover; flex-shrink: 0;
+  background: var(--surface-2); box-shadow: 0 0 0 1px rgba(196,168,130,.3);
+}
+.artist-body { min-width: 0; flex: 1; }
+.artist-eyebrow { font-family: var(--font-mono); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; color: var(--warm); }
+.artist-name { font-family: var(--font-display); font-weight: 400; font-size: clamp(30px, 5vw, 46px); color: var(--cream); line-height: 1.1; margin-top: 6px; overflow-wrap: anywhere; }
+.artist-handle { font-family: var(--font-mono); font-size: 11px; color: var(--text-tertiary); margin-top: 8px; }
+.artist-bio { font-size: 14px; line-height: 1.7; color: var(--text-secondary); margin-top: 14px; max-width: 64ch; white-space: pre-line; overflow-wrap: anywhere; }
+.artist-bio:empty { display: none; }
+.artist-links { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 14px; }
+.artist-links a { font-size: 12px; color: var(--text-secondary); border-bottom: 1px solid rgba(255,255,255,.15); }
+.artist-links a:hover { color: var(--cream); }
+.artist-toggle { display: flex; gap: 22px; margin-top: 22px; }
+.artist-toggle a { font-family: var(--font-display); font-style: italic; font-size: 16px; color: var(--text-secondary); padding-bottom: 2px; border-bottom: 1px solid transparent; transition: color .2s ease; }
+.artist-toggle a:hover { color: var(--cream); }
+.artist-toggle a.active { color: var(--warm); border-bottom-color: var(--warm); }
+.artist-link { border-bottom: 1px solid rgba(196,168,130,.45); transition: color .2s ease; }
+.artist-link:hover { color: var(--warm); }
+.lightbox-copy-link {
+  display: block; margin-top: 14px; padding: 0; background: none; border: none; cursor: pointer;
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--text-tertiary);
+}
+.lightbox-copy-link:hover { color: var(--cream); }
+.collect-disclosure { font-size: 11px; line-height: 1.6; color: var(--text-tertiary); margin-top: 8px; max-width: 290px; }
+@media (max-width: 700px) {
+  .artist-header { flex-direction: column; gap: 16px; padding-top: 8px; }
+  .artist-avatar { width: 84px; height: 84px; }
+}
+
 /* Collect (buy on OBJKT without leaving Alcove) */
 .lightbox-collect { margin-top: 18px; }
 .lightbox-collect:empty { display: none; }
@@ -1310,6 +1346,20 @@ footer {
 
 <!-- RESULTS -->
 <section class="results-section" id="resultsSection">
+  <div class="artist-header" id="artistHeader" hidden>
+    <img class="artist-avatar" id="artistAvatar" alt="">
+    <div class="artist-body">
+      <div class="artist-eyebrow">Artist</div>
+      <h1 class="artist-name" id="artistName"></h1>
+      <div class="artist-handle" id="artistHandle"></div>
+      <p class="artist-bio" id="artistBio"></p>
+      <div class="artist-links" id="artistLinks"></div>
+      <div class="artist-toggle" id="artistToggle">
+        <a href="#" data-avail="0" class="active">All work</a>
+        <a href="#" data-avail="1">Available now</a>
+      </div>
+    </div>
+  </div>
   <nav class="modes modes-results" aria-label="Browse">
         <span class="modes-label">Or browse</span>
         <a href="#listings" data-mode="listings">New Listings</a>
@@ -1364,6 +1414,7 @@ footer {
       <div class="lightbox-detail" id="lightboxDesc"></div>
       <div class="masonry-tags" id="lightboxTags"></div>
       <div class="lightbox-collect" id="lightboxCollect"></div>
+      <button class="lightbox-copy-link" id="lightboxCopy" type="button">Copy link</button>
       <a class="lightbox-source-link" id="lightboxLink" href="#" target="_blank">
         View on marketplace &rarr;
       </a>
@@ -1406,6 +1457,11 @@ footer {
 
     <div class="about-section-label">What Alcove Does</div>
     <p class="about-text">Alcove searches across <strong>Tezos</strong> art collections, combining results into a single beautiful grid. Describe a feeling or concept and our AI interpreter translates your vision into optimized searches.</p>
+
+    <div class="about-divider"></div>
+
+    <div class="about-section-label">Collecting</div>
+    <p class="about-text">When a piece is listed on OBJKT, you can collect it right here with your own Tezos wallet. The purchase settles on OBJKT's marketplace contract, and Alcove never holds your tez or your art. You pay the listed price. Alcove earns a small referral from OBJKT's fee, so artists and sellers receive exactly what they would on OBJKT. Listings marked <strong>Primary</strong> are sold by the artist; <strong>Secondary</strong> listings are resales from collectors.</p>
 
     <div class="about-divider"></div>
 
@@ -2476,6 +2532,7 @@ function normalizeToken(token) {
   return {
     id: `tez_${token.fa_contract}_${token.token_id}`,
     pk: token.pk,
+    creatorAddress: creator?.address || null,
     faContract: token.fa_contract,
     tokenId: token.token_id,
     title: (token.name || 'Untitled').slice(0, 80),
@@ -2742,7 +2799,7 @@ function appendMasonry(results) {
 
 // Infinite scroll
 window.addEventListener('scroll', () => {
-  if (browseMode === 'listings' || browseMode === 'popular') {
+  if (browseMode === 'listings' || browseMode === 'popular' || browseMode === 'artist') {
     if (!browseHasMore || isLoading) return;
     if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2000) loadBrowse(browseMode, true);
     return;
@@ -2807,7 +2864,12 @@ function openLightbox(item, workingSrc) {
     lbImg.src = workingSrc || item.thumbUrl || item.imageUrl || '';
   }
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
-  document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
+  const authorEl = document.getElementById('lightboxAuthor');
+  const rest = `${item.collection ? ' · ' + escHtml(item.collection) : ''} · ${escHtml(item.source || '')}`;
+  authorEl.innerHTML = item.creatorAddress
+    ? `<a class="artist-link" href="/a/${escHtml(item.creatorAddress)}" data-artist-addr="${escHtml(item.creatorAddress)}">${escHtml(item.author || 'Unknown')}</a>${rest}`
+    : `${escHtml(item.author || 'Unknown')}${rest}`;
+  setPieceUrl(item);
   document.getElementById('lightboxDesc').textContent = item.stat || '';
   document.getElementById('lightboxLink').href = item.sourceUrl || '#';
 
@@ -2847,18 +2909,23 @@ function openLightbox(item, workingSrc) {
   document.body.style.overflow = 'hidden';
 }
 
-document.getElementById('lightboxClose').addEventListener('click', () => {
+// fromHistory: the browser already moved the URL (back button), so don't touch history.
+function closeLightbox(fromHistory = false) {
+  const lb = document.getElementById('lightbox');
+  if (!lb.classList.contains('visible')) return;
   lightboxCuratorToken++;
   collectToken++;
-  document.getElementById('lightbox').classList.remove('visible');
+  lb.classList.remove('visible');
   document.body.style.overflow = '';
   const v = document.getElementById('lightboxVideo'); v.pause(); v.src = '';
-});
+  if (browseMode !== 'artist') document.title = DEFAULT_TITLE;
+  if (fromHistory) { lbPushedUrl = false; return; }
+  if (lbPushedUrl) { lbPushedUrl = false; history.back(); }
+  else if (/^\/p\//.test(location.pathname)) history.replaceState(null, '', '/'); // landed directly on a piece link
+}
+document.getElementById('lightboxClose').addEventListener('click', () => closeLightbox());
 document.getElementById('lightbox').addEventListener('click', (e) => {
-  if (e.target === e.currentTarget) {
-    e.currentTarget.classList.remove('visible');
-    document.body.style.overflow = '';
-  }
+  if (e.target === e.currentTarget) closeLightbox();
 });
 
 // ═══════════════════════════════════════
@@ -2929,8 +2996,7 @@ document.getElementById('aboutCta')?.addEventListener('click', () => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') {
     if (document.getElementById('lightbox').classList.contains('visible')) {
-      document.getElementById('lightbox').classList.remove('visible');
-      document.body.style.overflow = '';
+      closeLightbox();
     } else if (aboutModal.classList.contains('visible')) {
       document.getElementById('aboutClose').click();
     } else if (document.getElementById('boardsModal').classList.contains('visible')) {
@@ -3076,6 +3142,7 @@ async function renderCollect(item) {
     ${saleBadge(isPrimarySale(listing.seller_address, listing.token?.creators))}
     <button class="collect-btn" id="collectBtn">Collect for ${tezStr(listing.price_xtz)}</button>
     <div class="collect-meta">${left} ${left === 1 ? 'edition' : 'editions'} listed · settles on OBJKT</div>
+    <div class="collect-disclosure">You pay the listed price. Alcove earns a small referral from OBJKT's fee; artists and sellers receive the same as on OBJKT.</div>
     <div class="collect-status" id="collectStatus"></div>
     <div class="collect-wallet" id="collectWallet"></div>`;
   renderWalletLine(myToken);
@@ -3112,7 +3179,7 @@ function showCollectedModal({ item, priceMutez, opHash, buyer, artSrc }) {
   document.getElementById('collectedOwned').href = `https://objkt.com/profile/${buyer}/owned`;
   const text = `Just collected "${item.title || 'Untitled'}" by ${item.author || 'an artist'} on Tezos ✦ found it on thealcove.art`;
   document.getElementById('collectedShare').href =
-    `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(item.sourceUrl || 'https://thealcove.art')}`;
+    `https://x.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(pieceUrl(item) || 'https://thealcove.art')}`;
 
   // A ring of gold sparks that bursts as the stamp lands.
   const sparks = document.getElementById('collectedSparks');
@@ -3245,7 +3312,9 @@ function leaveBrowseMode() {
   browseHasMore = false;
   setModeActive(null);
   document.getElementById('chartsSection').classList.remove('visible');
-  if (/^#(listings|popular|charts)$/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+  document.getElementById('artistHeader').hidden = true;
+  document.title = DEFAULT_TITLE;
+  if (/^#(listings|popular|charts)$/.test(location.hash) || /^\/a\//.test(location.pathname)) history.replaceState(null, '', '/');
 }
 
 function scrollToSection(el) {
@@ -3262,7 +3331,9 @@ function enterMode(mode, { scroll = true } = {}) {
   currentQuery = '';
   hasMore = false;
   setModeActive(mode);
-  if (location.hash !== '#' + mode) history.replaceState(null, '', '#' + mode);
+  if (location.pathname !== '/' || location.hash !== '#' + mode) history.replaceState(null, '', '/#' + mode);
+  document.getElementById('artistHeader').hidden = true;
+  document.title = DEFAULT_TITLE;
   const results = document.getElementById('resultsSection');
   const charts = document.getElementById('chartsSection');
   document.getElementById('boardMatchBanner').style.display = 'none';
@@ -3353,14 +3424,15 @@ async function loadBrowse(mode, append) {
       popularOffset = 0;
       browseHasMore = true;
       currentResults = [];
-      title.textContent = mode === 'listings' ? 'New Listings' : 'Most Popular';
-      count.textContent = mode === 'listings' ? 'Fresh on OBJKT...' : 'Most sold pieces, last 7 days...';
+      artistOffset = 0;
+      title.textContent = mode === 'listings' ? 'New Listings' : mode === 'artist' ? (artistAvailableOnly ? 'Available now' : 'All work') : 'Most Popular';
+      count.textContent = mode === 'listings' ? 'Fresh on OBJKT...' : mode === 'artist' ? 'Loading...' : 'Most sold pieces, last 7 days...';
       showSkeleton(grid);
     }
     let items = [], more = false, guard = 0;
     // Listings pages can come back empty after filtering, so pull a few until something renders.
     do {
-      ({ items, more } = mode === 'listings' ? await fetchListingsPage() : await fetchPopularPage());
+      ({ items, more } = mode === 'listings' ? await fetchListingsPage() : mode === 'artist' ? await fetchArtistPage() : await fetchPopularPage());
     } while (mode === 'listings' && !items.length && more && ++guard < 4);
     if (browseMode !== mode) return; // user switched away mid-load
     if (!append) initColumns(grid);
@@ -3368,11 +3440,13 @@ async function loadBrowse(mode, append) {
     browseHasMore = more;
     count.textContent = mode === 'listings'
       ? `${currentResults.length} newest listings`
-      : `${currentResults.length} most sold pieces · last 7 days`;
-    if (!append && !items.length) count.textContent = 'Nothing to show right now';
+      : mode === 'artist'
+        ? `${currentResults.length}${more ? '+' : ''} ${artistAvailableOnly ? 'available' : (currentResults.length === 1 ? 'piece' : 'pieces')}`
+        : `${currentResults.length} most sold pieces · last 7 days`;
+    if (!append && !items.length) count.textContent = mode === 'artist' && artistAvailableOnly ? 'Nothing listed right now' : 'Nothing to show right now';
   } catch (e) {
     console.warn('browse error:', e);
-    if (!append) { initColumns(grid); count.textContent = 'Could not load. Try again in a moment.'; }
+    if (!append) { initColumns(grid); count.textContent = 'OBJKT is slow to answer. Try again in a moment.'; }
     browseHasMore = false;
   } finally {
     isLoading = false;
@@ -3433,15 +3507,7 @@ async function renderCharts() {
       <div class="chart-board"><div class="chart-eyebrow">Last 24 hours</div><div class="chart-title">Top Collectors</div>${collectors}</div>
     </div>`;
 
-  body.querySelectorAll('[data-artist]').forEach(row => row.addEventListener('click', () => {
-    const name = row.dataset.artist;
-    if (name) {
-      document.getElementById('searchInput').value = name;
-      performSearch(name);
-    } else {
-      window.open(`https://objkt.com/profile/${row.dataset.address}`, '_blank', 'noopener');
-    }
-  }));
+  body.querySelectorAll('[data-artist]').forEach(row => row.addEventListener('click', () => enterArtist(row.dataset.address)));
   body.querySelectorAll('[data-piece]').forEach(row => row.addEventListener('click', () => {
     const r = data.topPieces[+row.dataset.piece];
     const item = normalizeToken(r.token);
@@ -3467,10 +3533,182 @@ function modeFromHash() {
 window.addEventListener('hashchange', () => { const m = modeFromHash(); if (m && m !== browseMode) enterMode(m); });
 
 // ═══════════════════════════════════════
+// PIECE + ARTIST PAGES (thealcove.art/p/<contract>/<id>, /a/<address>)
+// ═══════════════════════════════════════
+let lbPushedUrl = false;
+// Hard-coded: on /p/ and /a/ links the server has already swapped in that page's title.
+const DEFAULT_TITLE = 'Alcove — A place to discover the story of digital art';
+let artistAddr = null, artistAvailableOnly = false, artistOffset = 0;
+const ARTIST_PAGE = 48;
+
+function piecePath(item) {
+  const fa = item.faContract || item.id?.match(/^tez_(KT1\w+)_/)?.[1];
+  const id = item.tokenId ?? item.id?.match(/_(\d+)$/)?.[1];
+  return fa && id != null ? `/p/${fa}/${id}` : null;
+}
+function pieceUrl(item) { const p = piecePath(item); return p ? location.origin + p : null; }
+
+// Give every open piece its own URL so it can be shared, and so Back closes it.
+function setPieceUrl(item) {
+  const p = piecePath(item);
+  if (!p) return;
+  if (location.pathname === p) return;
+  if (/^\/p\//.test(location.pathname)) { history.replaceState({ lb: 1 }, '', p); return; }
+  history.pushState({ lb: 1 }, '', p);
+  lbPushedUrl = true;
+}
+
+document.getElementById('lightboxCopy').addEventListener('click', async e => {
+  const btn = e.currentTarget;
+  try { await navigator.clipboard.writeText(location.href); btn.textContent = 'Link copied'; }
+  catch { btn.textContent = location.href; }
+  setTimeout(() => { btn.textContent = 'Copy link'; }, 1800);
+});
+
+async function fetchArtistPage() {
+  const where = { creators: { creator_address: { _eq: artistAddr } }, supply: { _gt: '0' }, flag: { _neq: 'banned' } };
+  if (artistAvailableOnly) where.lowest_ask = { _is_null: false };
+  const r = await objktQuery({
+    query: `query ArtistWork($w: token_bool_exp!, $o: Int!, $l: Int!) {
+      token(where: $w, order_by: { pk: desc }, offset: $o, limit: $l) { ${TOKEN_FIELDS} }
+    }`,
+    variables: { w: where, o: artistOffset, l: ARTIST_PAGE },
+  }, 8000);
+  // A failed or timed-out query must read as an error, not as an artist with no work.
+  if (!Array.isArray(r.data?.token)) throw new Error('artist query failed');
+  const rows = r.data.token;
+  artistOffset += rows.length;
+  const items = [];
+  for (const t of rows) {
+    const item = normalizeToken(t);
+    if (!item || browseSeen.has(item.id)) continue;
+    browseSeen.add(item.id);
+    if (t.lowest_ask) item.stat = `Available · ${fmtTez(t.lowest_ask / 1e6)}`;
+    items.push(item);
+  }
+  return { items, more: rows.length === ARTIST_PAGE };
+}
+
+async function renderArtistHeader(addr) {
+  const head = document.getElementById('artistHeader');
+  const nameEl = document.getElementById('artistName');
+  head.hidden = false;
+  nameEl.textContent = `${addr.slice(0, 6)}…${addr.slice(-4)}`;
+  document.getElementById('artistHandle').textContent = addr;
+  document.getElementById('artistBio').textContent = '';
+  document.getElementById('artistLinks').innerHTML = '';
+  const avatar = document.getElementById('artistAvatar');
+  avatar.removeAttribute('src'); avatar.style.visibility = 'hidden';
+  const r = await objktQuery({
+    query: `query($a: String!) { holder_by_pk(address: $a) { alias description logo twitter website tzdomain instagram } }`,
+    variables: { a: addr },
+  }, 8000);
+  if (artistAddr !== addr) return;
+  const h = r.data?.holder_by_pk;
+  if (!h) return;
+  if (h.alias) nameEl.textContent = h.alias;
+  document.title = `${h.alias || nameEl.textContent} · Alcove`;
+  document.getElementById('artistHandle').textContent = h.tzdomain || addr;
+  document.getElementById('artistBio').textContent = (h.description || '').trim().slice(0, 600);
+  if (h.logo) { avatar.src = resolveIpfs(h.logo); avatar.style.visibility = ''; avatar.onerror = () => { avatar.style.visibility = 'hidden'; }; }
+  const links = [];
+  const ext = (u, label) => { if (u && /^https?:\/\//.test(u)) links.push(`<a href="${escHtml(u)}" target="_blank" rel="noopener">${label}</a>`); };
+  ext(h.twitter, 'X');
+  ext(h.instagram, 'Instagram');
+  ext(h.website, 'Website');
+  links.push(`<a href="https://objkt.com/profile/${escHtml(addr)}" target="_blank" rel="noopener">OBJKT profile</a>`);
+  document.getElementById('artistLinks').innerHTML = links.join('');
+}
+
+function enterArtist(addr, { push = true } = {}) {
+  if (!/^(tz[1-4]|KT1)[1-9A-HJ-NP-Za-km-z]{33}$/.test(addr || '')) return;
+  closeLightbox(true);
+  lbPushedUrl = false;
+  browseMode = 'artist';
+  artistAddr = addr;
+  artistAvailableOnly = false;
+  document.querySelectorAll('#artistToggle a').forEach(a => a.classList.toggle('active', a.dataset.avail === '0'));
+  currentQuery = '';
+  hasMore = false;
+  setModeActive(null);
+  const path = `/a/${addr}`;
+  if (location.pathname !== path) push ? history.pushState({ artist: addr }, '', path) : history.replaceState({ artist: addr }, '', path);
+  document.getElementById('chartsSection').classList.remove('visible');
+  document.getElementById('boardMatchBanner').style.display = 'none';
+  const results = document.getElementById('resultsSection');
+  results.classList.add('visible');
+  renderArtistHeader(addr);
+  isLoading = false;
+  loadBrowse('artist', false);
+  scrollToSection(results);
+}
+
+document.querySelectorAll('#artistToggle a').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  const avail = a.dataset.avail === '1';
+  if (avail === artistAvailableOnly || browseMode !== 'artist') return;
+  artistAvailableOnly = avail;
+  document.querySelectorAll('#artistToggle a').forEach(x => x.classList.toggle('active', x === a));
+  isLoading = false;
+  loadBrowse('artist', false);
+}));
+
+// Artist links anywhere in the page (lightbox byline, etc.) stay inside the app.
+document.addEventListener('click', e => {
+  const a = e.target.closest('a[data-artist-addr]');
+  if (!a || e.metaKey || e.ctrlKey || e.shiftKey) return;
+  e.preventDefault();
+  enterArtist(a.dataset.artistAddr);
+});
+
+async function openPieceFromPath(fa, id) {
+  const body = {
+    query: `query($fa: String!, $id: String!) { token(where: { fa_contract: { _eq: $fa }, token_id: { _eq: $id } }, limit: 1) { ${TOKEN_FIELDS} } }`,
+    variables: { fa, id },
+  };
+  // A shared link is worth waiting for: longer deadline plus one retry, and only
+  // fall back home when OBJKT answers that the piece doesn't exist.
+  let r = await objktQuery(body, 8000);
+  if (!Array.isArray(r.data?.token)) r = await objktQuery(body, 8000);
+  const found = Array.isArray(r.data?.token);
+  const t = r.data?.token?.[0];
+  const item = t && normalizeToken(t);
+  if (!item) {
+    if (found) history.replaceState(null, '', '/');
+    else showToast('OBJKT is slow right now. Refresh to try that piece again.');
+    return;
+  }
+  document.title = `${item.title} by ${item.author} · Alcove`;
+  lbPushedUrl = false;
+  openLightbox(item);
+}
+
+function routeFromLocation() {
+  const piece = location.pathname.match(/^\/p\/(KT1[1-9A-HJ-NP-Za-km-z]{33})\/(\d+)\/?$/);
+  const artist = location.pathname.match(/^\/a\/((?:tz[1-4]|KT1)[1-9A-HJ-NP-Za-km-z]{33})\/?$/);
+  if (piece) { openPieceFromPath(piece[1], piece[2]); return true; }
+  if (artist) { enterArtist(artist[1], { push: false }); return true; }
+  return false;
+}
+
+window.addEventListener('popstate', () => {
+  const lbOpen = document.getElementById('lightbox').classList.contains('visible');
+  if (lbOpen && !/^\/p\//.test(location.pathname)) { closeLightbox(true); return; }
+  const artist = location.pathname.match(/^\/a\/((?:tz[1-4]|KT1)[1-9A-HJ-NP-Za-km-z]{33})\/?$/);
+  if (artist && artist[1] !== artistAddr) { enterArtist(artist[1], { push: false }); return; }
+  if (/^\/p\//.test(location.pathname) && !lbOpen) { routeFromLocation(); return; }
+  if (location.pathname === '/' && browseMode === 'artist') {
+    browseMode = null; document.getElementById('artistHeader').hidden = true;
+    document.getElementById('resultsSection').classList.remove('visible');
+    document.title = DEFAULT_TITLE;
+  }
+});
+
+// ═══════════════════════════════════════
 // INIT: Load hero art (must be after resolveIpfs is defined)
 // ═══════════════════════════════════════
 loadHeroArt();
-if (modeFromHash()) enterMode(modeFromHash());
+if (!routeFromLocation() && modeFromHash()) enterMode(modeFromHash());
 // Warm the charts cache so Most Popular and Charts open instantly.
 setTimeout(() => getCharts().catch(() => {}), 2500);
 </script>

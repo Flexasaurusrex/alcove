@@ -7,9 +7,15 @@ export default async function handler(req, res) {
 
   try {
     // Read raw body to avoid any encoding mangling of % characters
-    const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
-    const rawBody = Buffer.concat(chunks).toString('utf-8');
+    let rawBody = '';
+    if (typeof req.body === 'string') rawBody = req.body;
+    else if (req.body && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) rawBody = JSON.stringify(req.body);
+    else {
+      // Some runtimes (vercel dev) hand over a pre-read body; production streams it.
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      rawBody = Buffer.concat(chunks).toString('utf-8');
+    }
 
     if (!rawBody) {
       return res.status(400).json({ error: 'Empty body' });

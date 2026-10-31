@@ -1,7 +1,12 @@
 {
   "buildCommand": "",
   "outputDirectory": "public",
+  "functions": {
+    "api/page.js": { "includeFiles": "public/index.html" }
+  },
   "rewrites": [
+    { "source": "/p/:fa/:id", "destination": "/api/page?kind=p&fa=:fa&id=:id" },
+    { "source": "/a/:addr", "destination": "/api/page?kind=a&addr=:addr" },
     { "source": "/((?!api).*)", "destination": "/index.html" }
   ],
   "headers": [
