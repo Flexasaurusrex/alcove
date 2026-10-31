@@ -20,8 +20,9 @@
 <meta property="og:image:height" content="630">
 <meta name="twitter:image" content="https://thealcove.art/og-image.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://ipfs.io" crossorigin>
-<link rel="preconnect" href="https://gateway.pinata.cloud" crossorigin>
+<link rel="preconnect" href="https://ipfs.fileship.xyz" crossorigin>
+<link rel="preconnect" href="https://ipfs.filebase.io" crossorigin>
+<link rel="preconnect" href="https://data.objkt.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.5.0/lz-string.min.js"></script>
 
@@ -974,6 +975,101 @@ footer {
 }
 
 /* ═══════════════════════════════════════
+   BROWSE MODES + CHARTS
+   ═══════════════════════════════════════ */
+.modes {
+  display: flex; align-items: baseline; flex-wrap: wrap;
+  gap: 6px 22px; margin-top: 22px;
+}
+.modes-label {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: .18em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.modes a {
+  font-family: var(--font-display);
+  font-size: 15px; font-style: italic;
+  color: var(--text-secondary);
+  padding-bottom: 2px; border-bottom: 1px solid transparent;
+  transition: color .2s ease, border-color .2s ease;
+}
+.modes a:hover { color: var(--cream); }
+.modes a.active { color: var(--warm); border-bottom-color: var(--warm); }
+.modes-results { margin: 0 0 22px; }
+
+.masonry-stat {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--warm); margin-top: 6px;
+}
+
+.charts-section {
+  padding: 0 32px 120px;
+  max-width: 1400px; margin: 0 auto;
+  display: none;
+}
+.charts-section.visible { display: block; }
+.charts-grid {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 48px;
+}
+.chart-board { min-width: 0; }
+.chart-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9px; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--warm); margin-bottom: 8px;
+}
+.chart-title {
+  font-family: var(--font-display);
+  font-size: 22px; font-weight: 400; color: var(--cream);
+  margin-bottom: 18px;
+}
+.chart-row {
+  display: flex; align-items: center; gap: 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+  cursor: pointer; min-width: 0;
+  transition: color .2s ease;
+}
+.chart-row:last-child { border-bottom: 1px solid var(--border); }
+.chart-row:hover .chart-name { color: var(--warm); }
+.chart-rank {
+  font-family: var(--font-mono);
+  font-size: 11px; color: var(--text-tertiary);
+  width: 20px; flex-shrink: 0; text-align: right;
+}
+.chart-thumb {
+  width: 44px; height: 44px; flex-shrink: 0;
+  object-fit: cover; border-radius: 4px; background: var(--surface-2);
+}
+.chart-avatar { border-radius: 50%; }
+.chart-body { flex: 1; min-width: 0; }
+.chart-name {
+  font-size: 14px; color: var(--text-primary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: color .2s ease;
+}
+.chart-sub {
+  font-size: 11px; color: var(--text-tertiary); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.chart-metric {
+  font-family: var(--font-mono);
+  font-size: 12px; color: var(--cream);
+  flex-shrink: 0; text-align: right;
+}
+.chart-metric small { display: block; font-size: 9px; color: var(--text-tertiary); letter-spacing: .08em; text-transform: uppercase; margin-top: 2px; }
+.charts-status { font-size: 13px; color: var(--text-tertiary); padding: 40px 0; }
+@media (max-width: 1100px) {
+  .charts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .charts-section { padding: 0 16px 80px; }
+  .charts-grid { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  .modes { gap: 6px 16px; }
+}
+
+/* ═══════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════ */
 @media (max-width: 1100px) {
@@ -1075,6 +1171,12 @@ footer {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
         <span>More ideas</span>
       </button>
+      <nav class="modes" aria-label="Browse">
+        <span class="modes-label">Or browse</span>
+        <a href="#listings" data-mode="listings">New Listings</a>
+        <a href="#popular" data-mode="popular">Most Popular</a>
+        <a href="#charts" data-mode="charts">Charts</a>
+      </nav>
     </div>
     </div>
   </div>
@@ -1086,6 +1188,12 @@ footer {
 
 <!-- RESULTS -->
 <section class="results-section" id="resultsSection">
+  <nav class="modes modes-results" aria-label="Browse">
+        <span class="modes-label">Or browse</span>
+        <a href="#listings" data-mode="listings">New Listings</a>
+        <a href="#popular" data-mode="popular">Most Popular</a>
+        <a href="#charts" data-mode="charts">Charts</a>
+      </nav>
   <div class="results-header">
     <span class="results-query" id="resultsQuery"></span>
     <span class="results-count" id="resultsCount"></span>
@@ -1103,6 +1211,21 @@ footer {
   </div>
 
   <div class="masonry" id="masonryGrid"></div>
+</section>
+
+<!-- CHARTS -->
+<section class="charts-section" id="chartsSection">
+  <nav class="modes modes-results" aria-label="Browse">
+        <span class="modes-label">Or browse</span>
+        <a href="#listings" data-mode="listings">New Listings</a>
+        <a href="#popular" data-mode="popular">Most Popular</a>
+        <a href="#charts" data-mode="charts">Charts</a>
+      </nav>
+  <div class="results-header">
+    <span class="results-query">Charts</span>
+    <span class="results-count" id="chartsMeta"></span>
+  </div>
+  <div id="chartsBody"><div class="charts-status">Tallying sales on Tezos...</div></div>
 </section>
 
 <!-- LIGHTBOX -->
@@ -1333,7 +1456,7 @@ function resolveIpfsWithFallback(uri) {
   return new Promise(resolve => {
     const original = resolveIpfs(uri);
     if (!original) return resolve('');
-    const cidMatch = original.match(/\/ipfs\/(baf[yk][a-z2-7]{50,}|Qm[a-zA-Z0-9]{44,}.*)/);
+    const cidMatch = original.match(CID_RE);
     if (!cidMatch) { resolve(original); return; }
     const cidPath = cidMatch[1];
     let tried = 0;
@@ -1451,20 +1574,24 @@ document.getElementById('refreshSuggestions').addEventListener('click', function
 // ═══════════════════════════════════════
 // IPFS RESOLUTION
 // ═══════════════════════════════════════
+// Benchmarked 2026-10-30 on 20 objkt tokens + a 40-image burst:
+// fileship 40/40 (p50 760ms), filebase 20/20 but stalls under burst.
+// ipfs.io, pinata, nftstorage, dweb now 429; w3s, 4everland, cf-ipfs dead.
 const IPFS_GATEWAYS = [
-  'https://ipfs.io/ipfs/',
+  'https://ipfs.fileship.xyz/',
+  'https://ipfs.filebase.io/ipfs/',
   'https://gateway.pinata.cloud/ipfs/',
-  'https://w3s.link/ipfs/',
-  'https://nftstorage.link/ipfs/',
-  'https://cf-ipfs.com/ipfs/',
+  'https://ipfs.io/ipfs/',
 ];
+// CID (plus any path after it) from any gateway URL shape, with or without /ipfs/.
+const CID_RE = /(?:\/ipfs\/|^https:\/\/ipfs\.fileship\.xyz\/)((?:baf[a-z2-7]{50,}|Qm[1-9A-HJ-NP-Za-km-z]{44})[^?#]*)/;
 const IPFS_GATEWAY = IPFS_GATEWAYS[0];
 
 // Fallback: try alternative IPFS gateways on image load error
 function handleImgError(img) {
   const src = img.src || '';
   // Extract CID from current URL
-  const cidMatch = src.match(/\/ipfs\/(baf[yk][a-z2-7]{50,}|Qm[a-zA-Z0-9]{44,})/);
+  const cidMatch = src.match(CID_RE);
   if (cidMatch) {
     const cid = cidMatch[1];
     const currentGw = IPFS_GATEWAYS.findIndex(gw => src.startsWith(gw));
@@ -1493,8 +1620,11 @@ function resolveIpfs(uri) {
   if (/^(baf[yk][a-z2-7]{50,}|Qm[a-zA-Z0-9]{44,})/.test(uri)) return IPFS_GATEWAY + uri;
   // Handle Arweave
   if (uri.startsWith('ar://')) return 'https://arweave.net/' + uri.slice(5);
-  // Handle already-resolved HTTP URLs
-  if (uri.startsWith('http')) return uri;
+  // Already-resolved gateway URLs (often ipfs.io, now rate limited): move to our primary gateway
+  if (uri.startsWith('http')) {
+    const m = uri.match(CID_RE);
+    return m ? IPFS_GATEWAY + m[1] : uri;
+  }
   return uri;
 }
 
@@ -1512,22 +1642,35 @@ const TOKEN_FIELDS = `
   lowest_ask timestamp
 `;
 
-async function objktQuery(body) {
+// Direct to OBJKT first (CORS is open, saves a ~150ms hop); our proxy is the fallback.
+// Every query has a deadline: OBJKT's wide _ilike scans can hang ~10s on rare terms,
+// and one slow strategy used to stall the whole search.
+const OBJKT_TIMEOUT_MS = 3500;
+async function objktFetch(url, body, ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    const resp = await fetch('/api/proxy/objkt', {
+    const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: ctrl.signal,
     });
-    if (resp.ok) return await resp.json();
-    // Fallback: direct
-    const direct = await fetch('https://data.objkt.com/v3/graphql', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (direct.ok) return await direct.json();
-  } catch (e) { console.warn('OBJKT query error:', e); }
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const json = await resp.json();
+    if (json.errors && !json.data) throw new Error(json.errors[0]?.message || 'gql error');
+    return json;
+  } finally { clearTimeout(timer); }
+}
+async function objktQuery(body, ms = OBJKT_TIMEOUT_MS) {
+  try {
+    return await objktFetch('https://data.objkt.com/v3/graphql', body, ms);
+  } catch (e) {
+    // A timeout or DB error will be the same through the proxy, so only retry network failures.
+    if (e.name !== 'TypeError') { console.warn('OBJKT query skipped:', e.message || e.name); return { data: {} }; }
+  }
+  try { return await objktFetch('/api/proxy/objkt', body, ms); }
+  catch (e) { console.warn('OBJKT proxy error:', e.message || e.name); }
   return { data: {} };
 }
 
@@ -2218,6 +2361,7 @@ async function performSearch(query, append = false, noScroll = false) {
     const resultsCount = document.getElementById('resultsCount');
 
     if (!append) {
+      leaveBrowseMode();
       currentQuery = query;
       hasMore = true;
       tezosHasMore = true;
@@ -2416,6 +2560,7 @@ function createMasonryItem(item, delay) {
     <div class="masonry-overlay">
       <div class="masonry-title">${item.title}</div>
       <div class="masonry-meta">${item.author}${item.collection ? ` &middot; ${item.collection}` : ''} &middot; ${item.source}</div>
+      ${item.stat ? `<div class="masonry-stat">${item.stat}</div>` : ''}
       ${item.tags && item.tags.length > 0 ? `<div class="masonry-tags">${item.tags.map(t => `<span class="masonry-tag">${t}</span>`).join('')}</div>` : ''}
     </div>
   `;
@@ -2450,6 +2595,11 @@ function appendMasonry(results) {
 
 // Infinite scroll
 window.addEventListener('scroll', () => {
+  if (browseMode === 'listings' || browseMode === 'popular') {
+    if (!browseHasMore || isLoading) return;
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2000) loadBrowse(browseMode, true);
+    return;
+  }
   if (!hasMore || isLoading || !currentQuery) return;
   const scrollBottom = window.innerHeight + window.scrollY;
   const docHeight = document.documentElement.scrollHeight;
@@ -2511,7 +2661,7 @@ function openLightbox(item, workingSrc) {
   }
   document.getElementById('lightboxTitle').textContent = item.title || 'Untitled';
   document.getElementById('lightboxAuthor').textContent = `${item.author || 'Unknown'}${item.collection ? ' · ' + item.collection : ''} · ${item.source || ''}`;
-  document.getElementById('lightboxDesc').textContent = '';
+  document.getElementById('lightboxDesc').textContent = item.stat || '';
   document.getElementById('lightboxLink').href = item.sourceUrl || '#';
 
   const tagsEl = document.getElementById('lightboxTags');
@@ -2641,10 +2791,268 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+
+// ═══════════════════════════════════════
+// BROWSE MODES: NEW LISTINGS, MOST POPULAR, CHARTS
+// ═══════════════════════════════════════
+let browseMode = null;      // 'listings' | 'popular' | 'charts' | null (search)
+let browseHasMore = false;
+let browseSeen = new Set();
+let listingsCursor = null;  // timestamp of the oldest listing loaded
+let popularOffset = 0;
+let chartsPromise = null;
+const POPULAR_PAGE = 40;
+
+const escHtml = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtTez = n => {
+  const v = Number(n) || 0;
+  if (v >= 1000) return `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k ꜩ`;
+  return `${v >= 100 ? Math.round(v) : +v.toFixed(2)} ꜩ`;
+};
+
+function getCharts() {
+  if (!chartsPromise) {
+    chartsPromise = fetch('/api/charts')
+      .then(r => { if (!r.ok) throw new Error('charts ' + r.status); return r.json(); })
+      .catch(e => { chartsPromise = null; throw e; });
+  }
+  return chartsPromise;
+}
+
+function setModeActive(mode) {
+  document.querySelectorAll('.modes a[data-mode]').forEach(a => a.classList.toggle('active', a.dataset.mode === mode));
+}
+
+function leaveBrowseMode() {
+  browseMode = null;
+  browseHasMore = false;
+  setModeActive(null);
+  document.getElementById('chartsSection').classList.remove('visible');
+  if (/^#(listings|popular|charts)$/.test(location.hash)) history.replaceState(null, '', location.pathname + location.search);
+}
+
+function scrollToSection(el) {
+  setTimeout(() => {
+    const y = el.getBoundingClientRect().top + window.scrollY - 60;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  }, 80);
+}
+
+function enterMode(mode, { scroll = true } = {}) {
+  browseMode = mode;
+  currentQuery = '';
+  hasMore = false;
+  setModeActive(mode);
+  if (location.hash !== '#' + mode) history.replaceState(null, '', '#' + mode);
+  const results = document.getElementById('resultsSection');
+  const charts = document.getElementById('chartsSection');
+  document.getElementById('boardMatchBanner').style.display = 'none';
+  if (mode === 'charts') {
+    results.classList.remove('visible');
+    charts.classList.add('visible');
+    renderCharts();
+    if (scroll) scrollToSection(charts);
+  } else {
+    charts.classList.remove('visible');
+    results.classList.add('visible');
+    loadBrowse(mode, false);
+    if (scroll) scrollToSection(results);
+  }
+}
+
+function showSkeleton(grid) {
+  grid.innerHTML = '';
+  const numCols = getNumCols();
+  for (let c = 0; c < numCols; c++) {
+    const col = document.createElement('div');
+    col.className = 'masonry-col';
+    for (let i = 0; i < 3; i++) {
+      const skel = document.createElement('div');
+      skel.className = 'skeleton-item';
+      skel.style.height = (150 + Math.random() * 200) + 'px';
+      col.appendChild(skel);
+    }
+    grid.appendChild(col);
+  }
+}
+
+async function fetchListingsPage() {
+  const hi = listingsCursor || new Date(Date.now() + 60e3).toISOString();
+  // A bounded time window keeps OBJKT's listing table query fast.
+  const lo = new Date(Date.parse(hi) - 7 * 864e5).toISOString();
+  const r = await objktQuery({
+    query: `query NewListings($hi: timestamptz!, $lo: timestamptz!) {
+      listing_active(
+        where: { timestamp: { _lte: $hi, _gt: $lo }, currency_id: { _eq: 1 }, price_xtz: { _gt: 0 } },
+        order_by: { timestamp: desc }, limit: 60
+      ) { id timestamp price_xtz token { ${TOKEN_FIELDS} flag supply } }
+    }`,
+    variables: { hi, lo },
+  });
+  const rows = r.data?.listing_active || [];
+  if (rows.length) listingsCursor = rows[rows.length - 1].timestamp;
+  const items = [];
+  for (const l of rows) {
+    const t = l.token;
+    if (!t || t.flag === 'banned' || Number(t.supply) <= 0) continue;
+    const item = normalizeToken(t);
+    if (!item || browseSeen.has(item.id)) continue;
+    browseSeen.add(item.id);
+    item.stat = `Listed at ${fmtTez(l.price_xtz / 1e6)}`;
+    items.push(item);
+  }
+  return { items, more: rows.length === 60 };
+}
+
+async function fetchPopularPage() {
+  const data = await getCharts();
+  const slice = (data.popular || []).slice(popularOffset, popularOffset + POPULAR_PAGE);
+  const start = popularOffset;
+  popularOffset += slice.length;
+  const items = [];
+  slice.forEach((row, i) => {
+    const item = normalizeToken(row.token);
+    if (!item || browseSeen.has(item.id)) return;
+    browseSeen.add(item.id);
+    item.stat = `#${start + i + 1} · ${row.sales} sales this week`;
+    items.push(item);
+  });
+  return { items, more: popularOffset < (data.popular || []).length };
+}
+
+async function loadBrowse(mode, append) {
+  if (isLoading) return;
+  isLoading = true;
+  const grid = document.getElementById('masonryGrid');
+  const title = document.getElementById('resultsQuery');
+  const count = document.getElementById('resultsCount');
+  try {
+    if (!append) {
+      browseSeen = new Set();
+      listingsCursor = null;
+      popularOffset = 0;
+      browseHasMore = true;
+      currentResults = [];
+      title.textContent = mode === 'listings' ? 'New Listings' : 'Most Popular';
+      count.textContent = mode === 'listings' ? 'Fresh on OBJKT...' : 'Most sold pieces, last 7 days...';
+      showSkeleton(grid);
+    }
+    let items = [], more = false, guard = 0;
+    // Listings pages can come back empty after filtering, so pull a few until something renders.
+    do {
+      ({ items, more } = mode === 'listings' ? await fetchListingsPage() : await fetchPopularPage());
+    } while (mode === 'listings' && !items.length && more && ++guard < 4);
+    if (browseMode !== mode) return; // user switched away mid-load
+    if (!append) initColumns(grid);
+    if (items.length) { appendMasonry(items); currentResults.push(...items); }
+    browseHasMore = more;
+    count.textContent = mode === 'listings'
+      ? `${currentResults.length} newest listings`
+      : `${currentResults.length} most sold pieces · last 7 days`;
+    if (!append && !items.length) count.textContent = 'Nothing to show right now';
+  } catch (e) {
+    console.warn('browse error:', e);
+    if (!append) { initColumns(grid); count.textContent = 'Could not load. Try again in a moment.'; }
+    browseHasMore = false;
+  } finally {
+    isLoading = false;
+  }
+}
+
+function ago(iso) {
+  const m = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 60000));
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  return `${Math.round(m / 60)} hr ago`;
+}
+
+function holderName(r) {
+  return r.alias || `${r.address.slice(0, 6)}…${r.address.slice(-4)}`;
+}
+
+async function renderCharts() {
+  const body = document.getElementById('chartsBody');
+  const meta = document.getElementById('chartsMeta');
+  let data;
+  try { data = await getCharts(); }
+  catch (e) { body.innerHTML = '<div class="charts-status">Charts are unavailable right now. Try again in a moment.</div>'; return; }
+  meta.textContent = `${data.salesCounted.toLocaleString()} sales tallied · updated ${ago(data.generatedAt)}`;
+
+  const avatar = r => r.logo ? `<img class="chart-thumb chart-avatar" src="${escHtml(resolveIpfs(r.logo))}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">` : `<span class="chart-thumb chart-avatar"></span>`;
+
+  const artists = (data.topArtists || []).map((r, i) => `
+    <div class="chart-row" data-artist="${escHtml(r.alias || '')}" data-address="${escHtml(r.address)}">
+      <span class="chart-rank">${i + 1}</span>${avatar(r)}
+      <div class="chart-body"><div class="chart-name">${escHtml(holderName(r))}</div><div class="chart-sub">${r.sales} sales</div></div>
+      <div class="chart-metric">${fmtTez(r.volume)}<small>volume</small></div>
+    </div>`).join('');
+
+  const pieces = (data.topPieces || []).map((r, i) => {
+    const item = normalizeToken(r.token);
+    if (!item) return '';
+    return `
+    <div class="chart-row" data-piece="${i}">
+      <span class="chart-rank">${i + 1}</span>
+      <img class="chart-thumb" src="${escHtml(item.thumbUrl || item.imageUrl)}" alt="" loading="lazy" onerror="handleImgError(this)">
+      <div class="chart-body"><div class="chart-name">${escHtml(item.title)}</div><div class="chart-sub">${escHtml(item.author)}</div></div>
+      <div class="chart-metric">${r.sales}<small>sales</small></div>
+    </div>`;
+  }).join('');
+
+  const collectors = (data.topCollectors || []).map((r, i) => `
+    <div class="chart-row" data-collector="${escHtml(r.address)}">
+      <span class="chart-rank">${i + 1}</span>${avatar(r)}
+      <div class="chart-body"><div class="chart-name">${escHtml(holderName(r))}</div><div class="chart-sub">${r.sales} ${r.sales === 1 ? 'purchase' : 'purchases'}</div></div>
+      <div class="chart-metric">${fmtTez(r.volume)}<small>spent</small></div>
+    </div>`).join('');
+
+  body.innerHTML = `
+    <div class="charts-grid">
+      <div class="chart-board"><div class="chart-eyebrow">Last 30 days</div><div class="chart-title">Top Selling Artists</div>${artists}</div>
+      <div class="chart-board"><div class="chart-eyebrow">Last 30 days</div><div class="chart-title">Most Sold Pieces</div>${pieces}</div>
+      <div class="chart-board"><div class="chart-eyebrow">Last 24 hours</div><div class="chart-title">Top Collectors</div>${collectors}</div>
+    </div>`;
+
+  body.querySelectorAll('[data-artist]').forEach(row => row.addEventListener('click', () => {
+    const name = row.dataset.artist;
+    if (name) {
+      document.getElementById('searchInput').value = name;
+      performSearch(name);
+    } else {
+      window.open(`https://objkt.com/profile/${row.dataset.address}`, '_blank', 'noopener');
+    }
+  }));
+  body.querySelectorAll('[data-piece]').forEach(row => row.addEventListener('click', () => {
+    const r = data.topPieces[+row.dataset.piece];
+    const item = normalizeToken(r.token);
+    if (!item) return;
+    item.stat = `${r.sales} sales · ${fmtTez(r.volume)} in the last 30 days`;
+    openLightbox(item, row.querySelector('img')?.src);
+  }));
+  body.querySelectorAll('[data-collector]').forEach(row => row.addEventListener('click', () => {
+    window.open(`https://objkt.com/profile/${row.dataset.collector}/collection`, '_blank', 'noopener');
+  }));
+}
+
+document.querySelectorAll('.modes a[data-mode]').forEach(a => a.addEventListener('click', e => {
+  e.preventDefault();
+  enterMode(a.dataset.mode);
+}));
+
+// Deep links: thealcove.art/#listings, #popular, #charts
+function modeFromHash() {
+  const m = location.hash.slice(1);
+  return ['listings', 'popular', 'charts'].includes(m) ? m : null;
+}
+window.addEventListener('hashchange', () => { const m = modeFromHash(); if (m && m !== browseMode) enterMode(m); });
+
 // ═══════════════════════════════════════
 // INIT: Load hero art (must be after resolveIpfs is defined)
 // ═══════════════════════════════════════
 loadHeroArt();
+if (modeFromHash()) enterMode(modeFromHash());
+// Warm the charts cache so Most Popular and Charts open instantly.
+setTimeout(() => getCharts().catch(() => {}), 2500);
 </script>
 
 </body>
