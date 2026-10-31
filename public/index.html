@@ -597,6 +597,33 @@ a { color: inherit; text-decoration: none; }
 }
 .lightbox-source-link:hover { background: rgba(196,168,130,.3); }
 
+/* Collect (buy on OBJKT without leaving Alcove) */
+.lightbox-collect { margin-top: 18px; }
+.lightbox-collect:empty { display: none; }
+.collect-btn {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 22px; border-radius: 100px;
+  background: var(--warm); color: #14110d;
+  border: 1px solid var(--warm); cursor: pointer;
+  font-family: var(--font-body); font-size: 14px; font-weight: 600;
+  transition: background .2s ease, opacity .2s ease;
+}
+.collect-btn:hover { background: #d4bb98; }
+.collect-btn:disabled { opacity: .55; cursor: default; }
+.collect-meta {
+  font-family: var(--font-mono);
+  font-size: 10px; letter-spacing: .08em; text-transform: uppercase;
+  color: var(--text-tertiary); margin-top: 8px;
+}
+.collect-status { font-size: 12px; line-height: 1.6; color: var(--text-secondary); margin-top: 10px; }
+.collect-status a { color: var(--warm); border-bottom: 1px solid rgba(196,168,130,.4); }
+.collect-status.error { color: #e0a08a; }
+.collect-wallet { font-size: 11px; color: var(--text-tertiary); margin-top: 8px; }
+.collect-wallet button {
+  background: none; border: none; padding: 0; margin-left: 6px; cursor: pointer;
+  font: inherit; color: var(--text-secondary); text-decoration: underline;
+}
+
 /* ═══════════════════════════════════════
    ABOUT MODAL
    ═══════════════════════════════════════ */
@@ -1244,6 +1271,7 @@ footer {
       <div class="lightbox-detail" id="lightboxAuthor"></div>
       <div class="lightbox-detail" id="lightboxDesc"></div>
       <div class="masonry-tags" id="lightboxTags"></div>
+      <div class="lightbox-collect" id="lightboxCollect"></div>
       <a class="lightbox-source-link" id="lightboxLink" href="#" target="_blank">
         View on marketplace &rarr;
       </a>
@@ -2334,6 +2362,9 @@ function normalizeToken(token) {
 
   return {
     id: `tez_${token.fa_contract}_${token.token_id}`,
+    pk: token.pk,
+    faContract: token.fa_contract,
+    tokenId: token.token_id,
     title: (token.name || 'Untitled').slice(0, 80),
     description: (token.description || '').slice(0, 400),
     author: creator?.alias || creator?.address?.slice(0, 8) || 'Unknown',
@@ -2697,12 +2728,15 @@ function openLightbox(item, workingSrc) {
     curatorSection.style.display = 'none';
   }
 
+  renderCollect(item);
+
   lb.classList.add('visible');
   document.body.style.overflow = 'hidden';
 }
 
 document.getElementById('lightboxClose').addEventListener('click', () => {
   lightboxCuratorToken++;
+  collectToken++;
   document.getElementById('lightbox').classList.remove('visible');
   document.body.style.overflow = '';
   const v = document.getElementById('lightboxVideo'); v.pause(); v.src = '';
@@ -2794,6 +2828,211 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+
+
+// ═══════════════════════════════════════
+// COLLECT: buy straight from an OBJKT listing, with Alcove as referrer
+// ═══════════════════════════════════════
+// Verified on-chain 2026-10-30: OBJKT marketplace v6.2 fulfill_ask takes a referrers
+// map; the listing's referral_bonus (e.g. 500 = 5% of price) is paid out of OBJKT's
+// fee to the referrer. The buyer pays exactly the listed price.
+const OBJKT_MARKET_V62 = 'KT1SwbTqhSKF6Pdokiu1K4Fpi17ahPPzmt1X';
+const ALCOVE_REFERRER = 'tz1Mn66CLYJUmsrYSy23EFtdWBkHgqCooCzi';
+// Never one hardcoded node: ECAD's public RPC was retired 2026-05-31.
+// tzbeta answers reads but rejects simulation helpers, so it goes last.
+const TEZOS_RPCS = ['https://tezos-mainnet.octez.io', 'https://rpc.tzkt.io/mainnet', 'https://mainnet.smartpy.io', 'https://rpc.tzbeta.net'];
+
+let taquitoPromise = null, tzWallet = null, tzToolkit = null, tzRpc = TEZOS_RPCS[0];
+let collectToken = 0;
+
+function loadTaquito() {
+  if (window.Taquito) return Promise.resolve(window.Taquito);
+  if (taquitoPromise) return taquitoPromise;
+  taquitoPromise = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = '/vendor.bundle.js'; // Taquito + Beacon 4.8.4-ecad, ~4MB, only loaded by people who collect
+    el.async = true;
+    el.onload = () => window.Taquito ? resolve(window.Taquito) : reject(new Error('Wallet library failed to load.'));
+    el.onerror = () => { taquitoPromise = null; reject(new Error('Could not load the wallet library.')); };
+    document.head.appendChild(el);
+  });
+  return taquitoPromise;
+}
+async function rpcAlive(url) {
+  try {
+    const r = await Promise.race([fetch(url + '/chains/main/blocks/head/header'), new Promise((_, j) => setTimeout(() => j(new Error('timeout')), 4000))]);
+    return r.ok;
+  } catch { return false; }
+}
+async function ensureHealthyRpc() {
+  if (await rpcAlive(tzRpc)) return;
+  for (const url of TEZOS_RPCS) if (url !== tzRpc && await rpcAlive(url)) { tzRpc = url; tzToolkit?.setRpcProvider(url); return; }
+  throw new Error('No Tezos node is answering right now. Try again in a minute.');
+}
+// One wallet instance per session: recreating it throws BeaconWalletNotInitialized at signing.
+async function getTzWallet() {
+  const T = await loadTaquito();
+  if (!tzWallet) {
+    tzToolkit = new T.TezosToolkit(tzRpc);
+    tzWallet = new T.BeaconWallet({ name: 'Alcove', preferredNetwork: 'mainnet', network: { type: 'mainnet' }, appUrl: location.origin });
+    tzToolkit.setWalletProvider(tzWallet);
+    try { tzWallet.client.subscribeToEvent('ACTIVE_ACCOUNT_SET', () => {}); } catch {}
+  }
+  return tzWallet;
+}
+async function activeTzAccount() {
+  if (!window.Taquito && !tzWallet) return null; // don't pull 4MB just to check
+  try { return (await (await getTzWallet()).client.getActiveAccount()) || null; } catch { return null; }
+}
+const isNetworkMismatch = e => /different network|currently selected|NetworkNotSupported|wrong network/i.test((e && (e.message || String(e))) || '');
+const isUserAbort = e => /abort|reject|denied|closed|NotGranted|cancel/i.test((e && (e.message || String(e))) || '');
+async function connectTzWallet() {
+  const w = await getTzWallet();
+  try {
+    await ensureHealthyRpc();
+    await w.requestPermissions();
+    return await w.client.getActiveAccount();
+  } catch (e) {
+    try { await w.clearActiveAccount(); } catch {}
+    if (isNetworkMismatch(e)) throw new Error('Your wallet is set to a different network. Switch it to Tezos Mainnet and try again. On Kukai for iOS, fully close and reopen the app.');
+    throw e;
+  }
+}
+async function disconnectTzWallet() {
+  if (!tzWallet) return;
+  try { await tzWallet.clearActiveAccount(); } catch {}
+  try { await tzWallet.client.removeAllAccounts(); } catch {}
+}
+
+// Cheapest live tez listing for this token on the v6.2 marketplace.
+async function findCollectableListing(item, buyer) {
+  let pk = item.pk;
+  if (!pk && item.faContract) {
+    const r = await objktQuery({ query: `query($c:String!,$t:String!){ token(where:{fa_contract:{_eq:$c}, token_id:{_eq:$t}}, limit:1){ pk } }`, variables: { c: item.faContract, t: String(item.tokenId) } });
+    pk = r.data?.token?.[0]?.pk;
+  }
+  if (!pk && item.id?.startsWith('tez_')) {
+    const [, c, t] = item.id.match(/^tez_(KT1\w+)_(\d+)$/) || [];
+    if (c) {
+      const r = await objktQuery({ query: `query($c:String!,$t:String!){ token(where:{fa_contract:{_eq:$c}, token_id:{_eq:$t}}, limit:1){ pk } }`, variables: { c, t } });
+      pk = r.data?.token?.[0]?.pk;
+    }
+  }
+  if (!pk) return null;
+  const r = await objktQuery({
+    query: `query($pk: bigint!, $m: String!) {
+      listing_active(where: { token_pk: { _eq: $pk }, marketplace_contract: { _eq: $m }, currency_id: { _eq: 1 }, amount_left: { _gt: 0 } },
+        order_by: { price_xtz: asc }, limit: 10
+      ) { bigmap_key price_xtz amount_left seller_address expiry start_time target_address referral_bonus }
+    }`,
+    variables: { pk, m: OBJKT_MARKET_V62 },
+  });
+  const now = Date.now();
+  return (r.data?.listing_active || []).find(l =>
+    Number(l.price_xtz) > 0 &&
+    (!l.expiry || Date.parse(l.expiry) > now + 60e3) &&
+    (!l.start_time || Date.parse(l.start_time) <= now) &&
+    (!l.target_address || l.target_address === buyer) &&
+    (!buyer || l.seller_address !== buyer)
+  ) || null;
+}
+
+const tezStr = mutez => { const v = Number(mutez) / 1e6; return `${v >= 100 ? Math.round(v * 100) / 100 : +v.toFixed(4)} ꜩ`; };
+const shortTz = a => a ? `${a.slice(0, 5)}…${a.slice(-4)}` : '';
+
+async function renderCollect(item) {
+  const box = document.getElementById('lightboxCollect');
+  const myToken = ++collectToken;
+  box.innerHTML = '';
+  if (!item || item.source !== 'Tezos') return;
+  let listing;
+  try { listing = await findCollectableListing(item, (await activeTzAccount())?.address); } catch { listing = null; }
+  if (myToken !== collectToken) return; // lightbox moved on
+  if (!listing) return;
+  const left = Number(listing.amount_left);
+  box.innerHTML = `
+    <button class="collect-btn" id="collectBtn">Collect for ${tezStr(listing.price_xtz)}</button>
+    <div class="collect-meta">${left} ${left === 1 ? 'edition' : 'editions'} listed · settles on OBJKT</div>
+    <div class="collect-status" id="collectStatus"></div>
+    <div class="collect-wallet" id="collectWallet"></div>`;
+  renderWalletLine(myToken);
+  document.getElementById('collectBtn').addEventListener('click', () => collectItem(item, myToken));
+}
+
+async function renderWalletLine(myToken) {
+  const el = document.getElementById('collectWallet');
+  if (!el) return;
+  const acct = await activeTzAccount();
+  if (myToken !== collectToken) return;
+  el.innerHTML = acct ? `Wallet ${escHtml(shortTz(acct.address))}<button id="collectDisconnect">Disconnect</button>` : '';
+  document.getElementById('collectDisconnect')?.addEventListener('click', async () => { await disconnectTzWallet(); renderWalletLine(myToken); });
+}
+
+function setCollectStatus(html, isError = false) {
+  const el = document.getElementById('collectStatus');
+  if (!el) return;
+  el.className = 'collect-status' + (isError ? ' error' : '');
+  el.innerHTML = html;
+}
+
+async function collectItem(item, myToken) {
+  const btn = document.getElementById('collectBtn');
+  if (!btn || btn.disabled) return;
+  btn.disabled = true;
+  try {
+    setCollectStatus('Opening your wallet…');
+    let acct = await activeTzAccount();
+    if (!acct) acct = await connectTzWallet();
+    if (!acct?.address) throw new Error('No wallet connected.');
+    renderWalletLine(myToken);
+
+    // Re-read the listing right before signing so nobody pays a stale price.
+    setCollectStatus('Checking the listing is still live…');
+    const listing = await findCollectableListing(item, acct.address);
+    if (!listing) throw new Error('This listing just sold or was pulled. It may still be on OBJKT at a different price.');
+    btn.textContent = `Collect for ${tezStr(listing.price_xtz)}`;
+
+    await ensureHealthyRpc();
+    setCollectStatus(`Confirm the purchase of 1 edition for ${tezStr(listing.price_xtz)} in your wallet.`);
+    // fulfill_ask(ask_id, amount, proxy_for, condition_extra, referrers): Micheline copied
+    // from a real referred sale, so no MichelsonMap helper is needed from the bundle.
+    const op = await tzToolkit.wallet.transfer({
+      to: OBJKT_MARKET_V62,
+      amount: Number(listing.price_xtz),
+      mutez: true,
+      parameter: {
+        entrypoint: 'fulfill_ask',
+        value: { prim: 'Pair', args: [
+          { int: String(listing.bigmap_key) },
+          { prim: 'Pair', args: [
+            { int: '1' },
+            { prim: 'Pair', args: [
+              { prim: 'None' },
+              { prim: 'Pair', args: [
+                { prim: 'None' },
+                [{ prim: 'Elt', args: [{ string: ALCOVE_REFERRER }, { int: '10000' }] }],
+              ] },
+            ] },
+          ] },
+        ] },
+      },
+    }).send();
+
+    const link = `https://tzkt.io/${op.opHash}`;
+    setCollectStatus(`Sent. Waiting for Tezos to confirm… <a href="${link}" target="_blank" rel="noopener">View transaction</a>`);
+    await op.confirmation(1);
+    if (myToken === collectToken) {
+      btn.textContent = 'Collected';
+      setCollectStatus(`It's yours. <a href="${link}" target="_blank" rel="noopener">View transaction</a> · <a href="https://objkt.com/profile/${acct.address}/owned" target="_blank" rel="noopener">See it in your collection</a>`);
+    }
+    return;
+  } catch (e) {
+    if (isUserAbort(e)) setCollectStatus('Cancelled in your wallet. Nothing was charged.');
+    else setCollectStatus(escHtml(e?.message || 'Something went wrong. Nothing was charged.'), true);
+    console.warn('collect error:', e);
+  }
+  btn.disabled = false;
+}
 
 // ═══════════════════════════════════════
 // BROWSE MODES: NEW LISTINGS, MOST POPULAR, CHARTS
